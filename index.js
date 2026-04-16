@@ -5,9 +5,21 @@ const express = require("express");
 
 const app = express();
 
-// 🔐 Firebase (ENV üzerinden güvenli kullanım)
-const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
+// 🔐 ENV KONTROL
+if (!process.env.GOOGLE_CREDENTIALS) {
+    throw new Error("❌ GOOGLE_CREDENTIALS eksik!");
+}
 
+// 🔐 MULTILINE JSON FIX (EN KRİTİK)
+let serviceAccount;
+try {
+    serviceAccount = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+} catch (err) {
+    console.error("❌ JSON parse hatası:", err.message);
+    throw new Error("GOOGLE_CREDENTIALS JSON bozuk!");
+}
+
+// 🔐 Firebase init
 admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
 });
@@ -19,28 +31,31 @@ let isProcessing = false;
 // 🔥 RAM CACHE
 const sentCache = new Set();
 
-// 🧹 CACHE TEMİZLE
+// 🧹 CACHE TEMİZLE (1 saat)
 setInterval(() => {
     sentCache.clear();
     console.log("🧹 RAM cache temizlendi");
 }, 1000 * 60 * 60);
 
 /**
- * 📏 Mesafe
+ * 📏 Mesafe (Haversine)
  */
 function getDistance(lat1, lon1, lat2, lon2) {
     const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dLat / 2) ** 2 +
+
+    const a =
+        Math.sin(dLat / 2) ** 2 +
         Math.cos(lat1 * Math.PI / 180) *
         Math.cos(lat2 * Math.PI / 180) *
         Math.sin(dLon / 2) ** 2;
+
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 /**
- * 🔒 Duplicate kontrol
+ * 🔒 Duplicate kontrol (Firestore + RAM)
  */
 async function checkAndMarkSent(id) {
     if (sentCache.has(id)) return true;
@@ -72,7 +87,7 @@ async function sendNotification(eq) {
     const { mag, place } = eq.properties;
     const [lon, lat] = eq.geometry.coordinates;
 
-    // 🌍 GLOBAL FREE (BÜYÜK DEPREM)
+    // 🌍 GLOBAL (BEDAVA)
     if (mag >= 4.5) {
         await admin.messaging().send({
             topic: "global",
@@ -88,18 +103,19 @@ async function sendNotification(eq) {
             }
         });
 
-        console.log("🌍 GLOBAL GÖNDERİLDİ (FREE)");
+        console.log("🌍 GLOBAL GÖNDERİLDİ");
         return;
     }
 
-    // 🔥 🔻 MALİYET OPTİMİZASYONU
-    // Küçük depremlerde kullanıcı çekme sayısını azalt
-    if (mag < 3.5) {
-        console.log("💸 Küçük deprem → kullanıcı sorgusu atlandı");
-        return;
-    }
+    // 💸 KÜÇÜK DEPREM → PAS
+    if (mag < 3.5) return;
 
-    const snapshot = await db.collection("users").get();
+    // 🔥 SADECE GEREKLİ ALANLAR
+    const snapshot = await db
+        .collection("users")
+        .select("token", "lat", "lon", "minMag", "maxDist")
+        .get();
+
     if (snapshot.empty) return;
 
     const messages = [];
@@ -122,7 +138,7 @@ async function sendNotification(eq) {
         messages.push({
             token: user.token,
             notification: {
-                title: `🚨 ${mag} Şiddetinde Deprem`,
+                title: `🚨 ${mag} Deprem`,
                 body: place
             },
             data: {
@@ -130,32 +146,17 @@ async function sendNotification(eq) {
                 place,
                 lat: lat.toString(),
                 lon: lon.toString()
-            },
-            android: {
-                priority: "high",
-                notification: {
-                    channelId: "earthquake_channel",
-                    sound: "default"
-                }
-            },
-            apns: {
-                payload: {
-                    aps: {
-                        sound: "default",
-                        contentAvailable: true
-                    }
-                }
             }
         });
     });
 
-    // 🔥 batch gönder
+    // 🔥 BATCH SEND
     for (let i = 0; i < messages.length; i += 500) {
         const batch = messages.slice(i, i + 500);
 
         try {
             const response = await admin.messaging().sendEach(batch);
-            console.log(`✅ ${response.successCount} başarılı`);
+            console.log(`✅ ${response.successCount} gönderildi`);
 
             response.responses.forEach((res, idx) => {
                 if (!res.success) {
@@ -175,13 +176,13 @@ async function sendNotification(eq) {
         }
     }
 
-    // 🧹 token temizleme
+    // 🧹 TOKEN TEMİZLE (maliyet azaltılmış)
     if (invalidTokens.length > 0) {
         console.log(`🧹 ${invalidTokens.length} token siliniyor`);
 
-        const users = await db.collection("users").get();
+        const snapshot = await db.collection("users").get();
 
-        users.forEach(doc => {
+        snapshot.forEach(doc => {
             const data = doc.data();
             if (invalidTokens.includes(data.token)) {
                 doc.ref.delete();
@@ -194,10 +195,7 @@ async function sendNotification(eq) {
  * 🔍 Ana döngü
  */
 async function checkEarthquakes() {
-    if (isProcessing) {
-        console.log("⏳ işlem devam ediyor...");
-        return;
-    }
+    if (isProcessing) return;
 
     isProcessing = true;
 
@@ -231,8 +229,8 @@ async function checkEarthquakes() {
     }
 }
 
-// ⏱️ 60 saniye (maliyet düşürme)
-cron.schedule("*/60 * * * * *", checkEarthquakes);
+// ⏱️ HER DAKİKA (STABİL)
+cron.schedule("0 * * * * *", checkEarthquakes);
 
 // 🌐 endpoint
 app.get("/", (req, res) => res.send("Deprem Servisi Aktif 🚀"));
