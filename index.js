@@ -1,8 +1,16 @@
 const admin = require("firebase-admin");
-const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+const fetch = (...args) => import("node-fetch").then(({ default: fetch }) => fetch(...args));
 const cron = require("node-cron");
+
+// 🔐 Firebase key güvenli kontrol
+if (!process.env.FIREBASE_KEY) {
+  console.error("❌ FIREBASE_KEY bulunamadı!");
+  process.exit(1);
+}
+
 const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
 
+// 🔐 Firebase başlat
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
@@ -10,61 +18,65 @@ admin.initializeApp({
 const db = admin.firestore();
 
 let lastEarthquakeTime = 0;
+let sentEarthquakes = new Set(); // aynı depremi tekrar atmamak için
 
 // 🔹 Firestore'dan kullanıcıları çek
 async function getUsers() {
-  const snapshot = await db.collection("users").get();
-  const users = [];
-
-  snapshot.forEach(doc => {
-    users.push(doc.data());
-  });
-
-  return users;
+  try {
+    const snapshot = await db.collection("users").get();
+    return snapshot.docs.map(doc => doc.data());
+  } catch (err) {
+    console.error("❌ Kullanıcılar alınamadı:", err.message);
+    return [];
+  }
 }
 
 // 🔹 Deprem verisini çek
 async function fetchEarthquakes() {
-  const res = await fetch(
-    "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson"
-  );
-  const data = await res.json();
-  return data.features;
+  try {
+    const res = await fetch(
+      "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson"
+    );
+    const data = await res.json();
+    return data.features || [];
+  } catch (err) {
+    console.error("❌ Deprem verisi alınamadı:", err.message);
+    return [];
+  }
 }
 
-// 🔥 GELİŞMİŞ BİLDİRİM (SES + ÖNEMLİ)
+// 🔥 Bildirim gönder
 async function sendNotification(eq) {
   const users = await getUsers();
 
   const mag = eq.properties.mag;
   const place = eq.properties.place;
+  const id = eq.id;
+
+  // 🔁 Aynı deprem tekrar gitmesin
+  if (sentEarthquakes.has(id)) return;
+  sentEarthquakes.add(id);
 
   for (let user of users) {
     if (!user.token) continue;
 
     const message = {
       token: user.token,
-
       notification: {
         title: `🚨 ${mag} Deprem`,
         body: place,
       },
-
       android: {
         priority: "high",
         notification: {
           sound: "default",
           channelId: "earthquake_channel",
-          priority: "max",
-          defaultSound: true,
         },
       },
-
       apns: {
         payload: {
           aps: {
             sound: "default",
-            contentAvailable: true,
           },
         },
       },
@@ -72,9 +84,9 @@ async function sendNotification(eq) {
 
     try {
       await admin.messaging().send(message);
-      console.log("✅ Bildirim gitti:", user.token);
+      console.log("✅ Bildirim gitti");
     } catch (err) {
-      console.log("❌ Hata:", err.message);
+      console.log("❌ Bildirim hatası:", err.message);
     }
   }
 }
@@ -99,21 +111,14 @@ async function checkEarthquakes() {
       }
     }
   } catch (e) {
-    console.error("❌ HATA:", e);
+    console.error("❌ HATA:", e.message);
   }
 }
 
 console.log("🚀 Deprem sistemi çalışıyor...");
 
-// 🔥 TEST BİLDİRİMİ
-setTimeout(() => {
-  sendNotification({
-    properties: {
-      mag: 5.5,
-      place: "TEST DEPREMİ",
-    },
-  });
-}, 5000);
+// 🔹 Sistem başlarken 1 kez çalıştır
+checkEarthquakes();
 
-// 🔹 Her 30 saniyede çalıştır
-cron.schedule("*/30 * * * * *", checkEarthquakes);
+// 🔹 Her 60 saniyede çalıştır (daha stabil)
+cron.schedule("*/60 * * * * *", checkEarthquakes);
