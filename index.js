@@ -1,8 +1,12 @@
 const admin = require("firebase-admin");
-const fetch = (...args) => import("node-fetch").then(({ default: fetch }) => fetch(...args));
+const fetch = (...args) =>
+  import("node-fetch").then(({ default: fetch }) => fetch(...args));
 const cron = require("node-cron");
+const express = require("express");
 
-// 🔐 Firebase key güvenli kontrol
+const app = express();
+
+// 🔐 Firebase key kontrol
 if (!process.env.FIREBASE_KEY) {
   console.error("❌ FIREBASE_KEY bulunamadı!");
   process.exit(1);
@@ -18,20 +22,20 @@ admin.initializeApp({
 const db = admin.firestore();
 
 let lastEarthquakeTime = 0;
-let sentEarthquakes = new Set(); // aynı depremi tekrar atmamak için
+let sentEarthquakes = new Set();
 
-// 🔹 Firestore'dan kullanıcıları çek
+// 🔹 Kullanıcıları çek
 async function getUsers() {
   try {
     const snapshot = await db.collection("users").get();
-    return snapshot.docs.map(doc => doc.data());
+    return snapshot.docs.map((doc) => doc.data());
   } catch (err) {
     console.error("❌ Kullanıcılar alınamadı:", err.message);
     return [];
   }
 }
 
-// 🔹 Deprem verisini çek
+// 🔹 Deprem verisi çek
 async function fetchEarthquakes() {
   try {
     const res = await fetch(
@@ -53,7 +57,6 @@ async function sendNotification(eq) {
   const place = eq.properties.place;
   const id = eq.id;
 
-  // 🔁 Aynı deprem tekrar gitmesin
   if (sentEarthquakes.has(id)) return;
   sentEarthquakes.add(id);
 
@@ -115,21 +118,20 @@ async function checkEarthquakes() {
   }
 }
 
+// 🚀 başlangıç
 console.log("🚀 Deprem sistemi çalışıyor...");
-
-// 🔹 Sistem başlarken 1 kez çalıştır
 checkEarthquakes();
 
-// 🔹 Her 60 saniyede çalıştır (daha stabil)
-cron.schedule("*/60 * * * * *", checkEarthquakes);
-const express = require("express");
-const app = express();
+// ⏱️ her 30 saniye
+cron.schedule("*/30 * * * * *", checkEarthquakes);
 
+// 🌐 Express server (Render için)
 app.get("/", (req, res) => {
   res.send("Deprem sistemi çalışıyor 🚀");
 });
 
 const PORT = process.env.PORT || 3000;
+
 app.listen(PORT, () => {
-  console.log("Server çalışıyor:", PORT);
+  console.log("🌐 Server çalışıyor:", PORT);
 });
