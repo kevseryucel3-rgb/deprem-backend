@@ -5,8 +5,9 @@ const express = require("express");
 
 const app = express();
 
-// 🔐 Firebase
-const serviceAccount = require("./serviceAccountKey.json");
+// 🔐 Firebase (ENV üzerinden güvenli kullanım)
+const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
+
 admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
 });
@@ -15,10 +16,10 @@ const db = admin.firestore();
 
 let isProcessing = false;
 
-// 🔥 RAM CACHE (duplicate önleme ekstra katman)
+// 🔥 RAM CACHE
 const sentCache = new Set();
 
-// 🧹 CACHE TEMİZLE (1 saat)
+// 🧹 CACHE TEMİZLE
 setInterval(() => {
     sentCache.clear();
     console.log("🧹 RAM cache temizlendi");
@@ -39,7 +40,7 @@ function getDistance(lat1, lon1, lat2, lon2) {
 }
 
 /**
- * 🔒 Firestore duplicate kontrol
+ * 🔒 Duplicate kontrol
  */
 async function checkAndMarkSent(id) {
     if (sentCache.has(id)) return true;
@@ -68,12 +69,11 @@ async function checkAndMarkSent(id) {
  * 📡 Bildirim gönder
  */
 async function sendNotification(eq) {
+    const { mag, place } = eq.properties;
+    const [lon, lat] = eq.geometry.coordinates;
 
-    // 🔥 ✅ YENİ EKLENEN: BÜYÜK DEPREM → GLOBAL (BEDAVA)
-    if (eq.properties.mag >= 4.5) {
-        const { mag, place } = eq.properties;
-        const [lon, lat] = eq.geometry.coordinates;
-
+    // 🌍 GLOBAL FREE (BÜYÜK DEPREM)
+    if (mag >= 4.5) {
         await admin.messaging().send({
             topic: "global",
             notification: {
@@ -89,13 +89,15 @@ async function sendNotification(eq) {
         });
 
         console.log("🌍 GLOBAL GÖNDERİLDİ (FREE)");
-
-        return; // ❗ BURASI KRİTİK
+        return;
     }
 
-    // 🔽 SENİN MEVCUT SİSTEM (Aynen korunmuş)
-    const { mag, place } = eq.properties;
-    const [lon, lat] = eq.geometry.coordinates;
+    // 🔥 🔻 MALİYET OPTİMİZASYONU
+    // Küçük depremlerde kullanıcı çekme sayısını azalt
+    if (mag < 3.5) {
+        console.log("💸 Küçük deprem → kullanıcı sorgusu atlandı");
+        return;
+    }
 
     const snapshot = await db.collection("users").get();
     if (snapshot.empty) return;
@@ -153,7 +155,6 @@ async function sendNotification(eq) {
 
         try {
             const response = await admin.messaging().sendEach(batch);
-
             console.log(`✅ ${response.successCount} başarılı`);
 
             response.responses.forEach((res, idx) => {
@@ -170,18 +171,11 @@ async function sendNotification(eq) {
             });
 
         } catch (error) {
-            console.error("❌ FCM batch hata:", error.message);
-
-            try {
-                await admin.messaging().sendEach(batch);
-                console.log("🔁 Retry başarılı");
-            } catch (e) {
-                console.error("❌ Retry da patladı:", e.message);
-            }
+            console.error("❌ FCM hata:", error.message);
         }
     }
 
-    // 🧹 invalid token temizle
+    // 🧹 token temizleme
     if (invalidTokens.length > 0) {
         console.log(`🧹 ${invalidTokens.length} token siliniyor`);
 
@@ -237,13 +231,13 @@ async function checkEarthquakes() {
     }
 }
 
-// ⏱️ OPTİMİZE (60 saniye)
+// ⏱️ 60 saniye (maliyet düşürme)
 cron.schedule("*/60 * * * * *", checkEarthquakes);
 
 // 🌐 endpoint
 app.get("/", (req, res) => res.send("Deprem Servisi Aktif 🚀"));
 
-// 🧪 health check
+// 🧪 health
 app.get("/health", (req, res) => {
     res.json({
         status: "ok",
