@@ -247,3 +247,25 @@ app.get("/health", (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🌐 Server ${PORT} portunda`));
+app.get("/test", async (req, res) => {
+  console.log("🧪 TEST TETİKLENDİ");
+
+  try {
+    await admin.messaging().send({
+      topic: "global",
+      data: {
+        mag: "5.5",
+        lat: "39.9",
+        lon: "32.8",
+        place: "TEST DEPREM",
+        open_alarm: "true",
+      },
+    });
+
+    console.log("📩 FCM OK");
+    res.send("Test gönderildi 🚀");
+  } catch (e) {
+    console.log("❌ FCM ERROR:", e.message);
+    res.send("Hata: " + e.message);
+  }
+});
