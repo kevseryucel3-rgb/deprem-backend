@@ -38,6 +38,13 @@ setInterval(() => {
     console.log("🧹 RAM cache temizlendi");
 }, 1000 * 60 * 60);
 
+// 🔥 RENDER SLEEP ENGELLE (KEEP ALIVE)
+setInterval(() => {
+    fetch("https://senin-url.onrender.com/health");
+    console.log("🔄 keep-alive ping");
+}, 1000 * 60 * 5);
+
+
 /**
  * 📏 Mesafe
  */
@@ -143,19 +150,32 @@ async function sendNotification(eq) {
             if (dist > maxDist) return;
         }
 
-        messages.push({
-            token: user.token,
-            android: { priority: "high" },
-            apns: { payload: { aps: { contentAvailable: true } } },
-            data: {
-                mag: mag.toString(),
-                place,
-                lat: lat.toString(),
-                lon: lon.toString(),
-                open_alarm: "true"
+       messages.push({
+    token: user.token,
+
+    // 🔥 ANDROID CRITICAL
+    android: {
+        priority: "high",
+        ttl: 0
+    },
+
+    // 🍏 iOS background desteği
+    apns: {
+        payload: {
+            aps: {
+                contentAvailable: true
             }
-        });
-    });
+        }
+    },
+
+    data: {
+        mag: mag.toString(),
+        place,
+        lat: lat.toString(),
+        lon: lon.toString(),
+        open_alarm: "true"
+    }
+});
 
     // 🔥 batch gönderim
     for (let i = 0; i < messages.length; i += 500) {
@@ -314,7 +334,22 @@ app.get("/test", async (req, res) => {
     try {
         await admin.messaging().send({
             topic: "global",
-            android: { priority: "high" },
+
+            // 🔥 ANDROID CRITICAL AYAR
+            android: {
+                priority: "high",
+                ttl: 0
+            },
+
+            // 🔥 (opsiyonel ama iyi) iOS için
+            apns: {
+                payload: {
+                    aps: {
+                        contentAvailable: true
+                    }
+                }
+            },
+
             data: {
                 mag: "5.5",
                 lat: "39.9",
@@ -324,8 +359,11 @@ app.get("/test", async (req, res) => {
             }
         });
 
+        console.log("🧪 TEST GÖNDERİLDİ");
         res.send("Test gönderildi 🚀");
+
     } catch (e) {
+        console.error("❌ TEST HATA:", e);
         res.send("Hata: " + e.message);
     }
 });
