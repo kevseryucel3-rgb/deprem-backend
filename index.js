@@ -1,5 +1,4 @@
 const admin = require("firebase-admin");
-const fetch = (...args) => import("node-fetch").then(({ default: fetch }) => fetch(...args));
 const cron = require("node-cron");
 const express = require("express");
 
@@ -10,7 +9,7 @@ if (!process.env.GOOGLE_CREDENTIALS) {
     throw new Error("❌ GOOGLE_CREDENTIALS eksik!");
 }
 
-// 🔐 MULTILINE JSON FIX (EN KRİTİK)
+// 🔐 JSON PARSE
 let serviceAccount;
 try {
     serviceAccount = JSON.parse(process.env.GOOGLE_CREDENTIALS);
@@ -31,14 +30,14 @@ let isProcessing = false;
 // 🔥 RAM CACHE
 const sentCache = new Set();
 
-// 🧹 CACHE TEMİZLE (1 saat)
+// 🧹 CACHE TEMİZLE
 setInterval(() => {
     sentCache.clear();
     console.log("🧹 RAM cache temizlendi");
 }, 1000 * 60 * 60);
 
 /**
- * 📏 Mesafe (Haversine)
+ * 📏 Mesafe
  */
 function getDistance(lat1, lon1, lat2, lon2) {
     const R = 6371;
@@ -55,7 +54,7 @@ function getDistance(lat1, lon1, lat2, lon2) {
 }
 
 /**
- * 🔒 Duplicate kontrol (Firestore + RAM)
+ * 🔒 Duplicate kontrol
  */
 async function checkAndMarkSent(id) {
     if (sentCache.has(id)) return true;
@@ -84,22 +83,27 @@ async function checkAndMarkSent(id) {
  * 📡 Bildirim gönder
  */
 async function sendNotification(eq) {
-    const { mag, place } = eq.properties;
-    const [lon, lat] = eq.geometry.coordinates;
+    const mag = Number(eq.properties?.mag || 0);
+    const place = eq.properties?.place || "Deprem";
+    const coords = eq.geometry?.coordinates || [];
 
-    // 🌍 GLOBAL (BEDAVA)
+    if (coords.length < 2) return;
+
+    const lon = coords[0];
+    const lat = coords[1];
+
+    // 🌍 GLOBAL
     if (mag >= 4.5) {
         await admin.messaging().send({
             topic: "global",
-            notification: {
-                title: `🚨 ${mag} Deprem`,
-                body: place
-            },
+            android: { priority: "high" },
+            apns: { payload: { aps: { contentAvailable: true } } },
             data: {
                 mag: mag.toString(),
                 place,
                 lat: lat.toString(),
-                lon: lon.toString()
+                lon: lon.toString(),
+                open_alarm: "true"
             }
         });
 
@@ -107,10 +111,9 @@ async function sendNotification(eq) {
         return;
     }
 
-    // 💸 KÜÇÜK DEPREM → PAS
+    // 💸 küçük deprem
     if (mag < 3.5) return;
 
-    // 🔥 SADECE GEREKLİ ALANLAR
     const snapshot = await db
         .collection("users")
         .select("token", "lat", "lon", "minMag", "maxDist")
@@ -137,25 +140,25 @@ async function sendNotification(eq) {
 
         messages.push({
             token: user.token,
-            notification: {
-                title: `🚨 ${mag} Deprem`,
-                body: place
-            },
+            android: { priority: "high" },
+            apns: { payload: { aps: { contentAvailable: true } } },
             data: {
                 mag: mag.toString(),
                 place,
                 lat: lat.toString(),
-                lon: lon.toString()
+                lon: lon.toString(),
+                open_alarm: "true"
             }
         });
     });
 
-    // 🔥 BATCH SEND
+    // 🔥 batch
     for (let i = 0; i < messages.length; i += 500) {
         const batch = messages.slice(i, i + 500);
 
         try {
             const response = await admin.messaging().sendEach(batch);
+
             console.log(`✅ ${response.successCount} gönderildi`);
 
             response.responses.forEach((res, idx) => {
@@ -176,7 +179,7 @@ async function sendNotification(eq) {
         }
     }
 
-    // 🧹 TOKEN TEMİZLE (maliyet azaltılmış)
+    // 🧹 TOKEN TEMİZLE
     if (invalidTokens.length > 0) {
         console.log(`🧹 ${invalidTokens.length} token siliniyor`);
 
@@ -192,7 +195,7 @@ async function sendNotification(eq) {
 }
 
 /**
- * 🔍 Ana döngü
+ * 🔍 Ana loop
  */
 async function checkEarthquakes() {
     if (isProcessing) return;
@@ -210,7 +213,7 @@ async function checkEarthquakes() {
         const quakes = data.features || [];
 
         for (const eq of quakes) {
-            const mag = eq.properties.mag;
+            const mag = Number(eq.properties?.mag || 0);
 
             if (mag < 2.5) continue;
 
@@ -229,13 +232,12 @@ async function checkEarthquakes() {
     }
 }
 
-// ⏱️ HER DAKİKA (STABİL)
-cron.schedule("0 * * * * *", checkEarthquakes);
+// 🔥 HER 30 SANİYE
+cron.schedule("*/30 * * * * *", checkEarthquakes);
 
-// 🌐 endpoint
+// 🌐 endpoints
 app.get("/", (req, res) => res.send("Deprem Servisi Aktif 🚀"));
 
-// 🧪 health
 app.get("/health", (req, res) => {
     res.json({
         status: "ok",
@@ -245,27 +247,26 @@ app.get("/health", (req, res) => {
     });
 });
 
+// 🧪 TEST
+app.get("/test", async (req, res) => {
+    try {
+        await admin.messaging().send({
+            topic: "global",
+            android: { priority: "high" },
+            data: {
+                mag: "5.5",
+                lat: "39.9",
+                lon: "32.8",
+                place: "TEST DEPREM",
+                open_alarm: "true"
+            }
+        });
+
+        res.send("Test gönderildi 🚀");
+    } catch (e) {
+        res.send("Hata: " + e.message);
+    }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🌐 Server ${PORT} portunda`));
-app.get("/test", async (req, res) => {
-  console.log("🧪 TEST TETİKLENDİ");
-
-  try {
-    await admin.messaging().send({
-      topic: "global",
-      data: {
-        mag: "5.5",
-        lat: "39.9",
-        lon: "32.8",
-        place: "TEST DEPREM",
-        open_alarm: "true",
-      },
-    });
-
-    console.log("📩 FCM OK");
-    res.send("Test gönderildi 🚀");
-  } catch (e) {
-    console.log("❌ FCM ERROR:", e.message);
-    res.send("Hata: " + e.message);
-  }
-});

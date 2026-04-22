@@ -4,34 +4,30 @@
   "description": "Deprem bildirim sistemi (Node.js + Firebase)",
   "main": "index.js",
   "type": "commonjs",
-
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js"
   },
-
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kevseryucel3-rgb/deprem-backend.git"
   },
-
-  "keywords": ["earthquake", "firebase", "fcm", "notification"],
-  "author": "",
+  "keywords": [
+    "earthquake",
+    "firebase",
+    "fcm",
+    "notification"
+  ],
   "license": "ISC",
-
-  "bugs": {
-    "url": "https://github.com/kevseryucel3-rgb/deprem-backend/issues"
-  },
-  "homepage": "https://github.com/kevseryucel3-rgb/deprem-backend#readme",
-
   "dependencies": {
     "express": "^4.18.2",
     "firebase-admin": "^13.8.0",
-    "node-cron": "^4.2.1",
-    "node-fetch": "^3.3.2"
+    "node-cron": "^4.2.1"
   },
-
   "devDependencies": {
     "nodemon": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
