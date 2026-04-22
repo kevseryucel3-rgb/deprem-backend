@@ -101,36 +101,64 @@ async function sendNotification(eq) {
     const lon = coords[0];
     const lat = coords[1];
 
-    // 🌍 GLOBAL (4.5 ve üzeri her yere bildirim)
+    // 🌍 GLOBAL (4.5 ve üzeri)
     if (mag >= 4.5) {
         console.log("🌍 GLOBAL TRIGGER:", mag, place);
+
         try {
             await admin.messaging().send({
                 topic: "global",
-                android: { priority: "high" },
-                apns: { payload: { aps: { contentAvailable: true } } },
+
+                // ✅ KAYAN BİLDİRİM
+                notification: {
+                    title: `🚨 ${mag} Deprem`,
+                    body: place
+                },
+
+                android: {
+                    priority: "high",
+                    notification: {
+                        channelId: "earthquake_channel"
+                    }
+                },
+
+                apns: {
+                    payload: {
+                        aps: {
+                            alert: {
+                                title: `🚨 ${mag} Deprem`,
+                                body: place
+                            },
+                            sound: "default"
+                        }
+                    }
+                },
+
+                // ✅ SADECE DATA
                 data: {
                     mag: mag.toString(),
                     place,
                     lat: lat.toString(),
-                    lon: lon.toString(),
-                    open_alarm: "true"
+                    lon: lon.toString()
                 }
             });
+
             console.log("🌍 GLOBAL GÖNDERİLDİ");
+
         } catch (e) {
             console.error("❌ Global gönderim hatası:", e.message);
         }
+
         return;
     }
 
-    // 💸 3.5 altı depremler için kişiye özel bildirim zahmetine girme
+    // 💸 3.5 altı skip
     if (mag < 3.5) return;
 
     const snapshot = await db
         .collection("users")
         .select("token", "lat", "lon", "minMag", "maxDist")
-        .limit(2000) // 🔥 Performans için limit
+        .limit(2000)
         .get();
 
     if (snapshot.empty) return;
@@ -145,10 +173,8 @@ async function sendNotification(eq) {
         const minMag = user.minMag || 3.0;
         const maxDist = user.maxDist || 500;
 
-        // Filtre: Büyüklük uygun mu?
         if (mag < minMag) return;
 
-        // Filtre: Mesafe uygun mu?
         if (user.lat && user.lon) {
             const dist = getDistance(user.lat, user.lon, lat, lon);
             if (dist > maxDist) return;
@@ -156,29 +182,55 @@ async function sendNotification(eq) {
 
         messages.push({
             token: user.token,
-            android: { priority: "high", ttl: 0 },
-            apns: { payload: { aps: { contentAvailable: true } } },
+
+            // ✅ KAYAN BİLDİRİM
+            notification: {
+                title: `🚨 ${mag} Deprem`,
+                body: place
+            },
+
+            android: {
+                priority: "high",
+                ttl: 0,
+                notification: {
+                    channelId: "earthquake_channel"
+                }
+            },
+
+            apns: {
+                payload: {
+                    aps: {
+                        alert: {
+                            title: `🚨 ${mag} Deprem`,
+                            body: place
+                        },
+                        sound: "default"
+                    }
+                }
+            },
+
+            // ✅ SADECE DATA
             data: {
                 mag: mag.toString(),
                 place,
                 lat: lat.toString(),
-                lon: lon.toString(),
-                open_alarm: "true"
+                lon: lon.toString()
             }
         });
     });
 
-    // 🔥 Batch Gönderim (500'erli gruplar)
+    // 🔥 Batch gönderim (AYNI)
     for (let i = 0; i < messages.length; i += 500) {
         const batch = messages.slice(i, i + 500);
+
         try {
             const response = await admin.messaging().sendEach(batch);
             console.log(`✅ ${response.successCount} mesaj gönderildi`);
 
-            // Hatalı tokenları tespit et
             response.responses.forEach((res, idx) => {
                 if (!res.success) {
                     const err = res.error?.code;
+
                     if (
                         err === "messaging/registration-token-not-registered" ||
                         err === "messaging/invalid-registration-token"
@@ -187,10 +239,12 @@ async function sendNotification(eq) {
                     }
                 }
             });
+
         } catch (error) {
             console.error("❌ FCM Batch hatası:", error.message);
         }
     }
+}
 
     // 🧹 TOKEN TEMİZLE (Optimize Edildi: Veri ve Kural Koruma)
     if (invalidTokens.length > 0) {
