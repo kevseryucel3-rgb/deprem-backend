@@ -219,57 +219,55 @@ async function sendNotification(eq) {
         });
     });
 
-    // 🔥 Batch gönderim (AYNI)
-    for (let i = 0; i < messages.length; i += 500) {
-        const batch = messages.slice(i, i + 500);
+   // 🔥 Batch gönderim
+for (let i = 0; i < messages.length; i += 500) {
+    const batch = messages.slice(i, i + 500);
 
-        try {
-            const response = await admin.messaging().sendEach(batch);
-            console.log(`✅ ${response.successCount} mesaj gönderildi`);
+    try {
+        const response = await admin.messaging().sendEach(batch);
+        console.log(`✅ ${response.successCount} mesaj gönderildi`);
 
-            response.responses.forEach((res, idx) => {
-                if (!res.success) {
-                    const err = res.error?.code;
+        response.responses.forEach((res, idx) => {
+            if (!res.success) {
+                const err = res.error?.code;
 
-                    if (
-                        err === "messaging/registration-token-not-registered" ||
-                        err === "messaging/invalid-registration-token"
-                    ) {
-                        invalidTokens.push(batch[idx].token);
-                    }
+                if (
+                    err === "messaging/registration-token-not-registered" ||
+                    err === "messaging/invalid-registration-token"
+                ) {
+                    invalidTokens.push(batch[idx].token);
                 }
-            });
-
-        } catch (error) {
-            console.error("❌ FCM Batch hatası:", error.message);
-        }
-    }
-}
-
-    // 🧹 TOKEN TEMİZLE (Optimize Edildi: Veri ve Kural Koruma)
-    if (invalidTokens.length > 0) {
-        console.log(`🧹 ${invalidTokens.length} geçersiz token temizleniyor...`);
-        const dbBatch = db.batch();
-        
-        try {
-            // Her geçersiz token için veritabanında hedefli arama yap
-            for (const token of invalidTokens) {
-                const userDocs = await db.collection("users")
-                    .where("token", "==", token)
-                    .get();
-                
-                userDocs.forEach(doc => {
-                    dbBatch.delete(doc.ref);
-                });
             }
-            await dbBatch.commit();
-            console.log("✅ Geçersiz tokenlar silindi.");
-        } catch (e) {
-            console.error("❌ Temizlik sırasında hata:", e.message);
-        }
+        });
+
+    } catch (error) {
+        console.error("❌ FCM Batch hatası:", error.message);
     }
 }
 
+// ✅ BURAYA TAŞI
+if (invalidTokens.length > 0) {
+    console.log(`🧹 ${invalidTokens.length} geçersiz token temizleniyor...`);
+    const dbBatch = db.batch();
+
+    try {
+        for (const token of invalidTokens) {
+            const userDocs = await db.collection("users")
+                .where("token", "==", token)
+                .get();
+
+            userDocs.forEach(doc => {
+                dbBatch.delete(doc.ref);
+            });
+        }
+
+        await dbBatch.commit();
+        console.log("✅ Geçersiz tokenlar silindi.");
+
+    } catch (e) {
+        console.error("❌ Temizlik sırasında hata:", e.message);
+    }
+}
 /**
  * 🔍 Ana loop
  */
