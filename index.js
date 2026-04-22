@@ -5,7 +5,10 @@ const express = require("express");
 const fetch = require("node-fetch"); // 🔥 EKLENDİ
 
 const app = express();
-
+app.use((req, res, next) => {
+    console.log("🌐 HIT:", req.url);
+    next();
+});
 // 🔐 ENV KONTROL
 if (!process.env.GOOGLE_CREDENTIALS) {
     throw new Error("❌ GOOGLE_CREDENTIALS eksik!");
