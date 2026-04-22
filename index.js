@@ -108,20 +108,16 @@ async function sendNotification(eq) {
         try {
             await admin.messaging().send({
                 topic: "global",
-
-                // ✅ KAYAN BİLDİRİM
                 notification: {
                     title: `🚨 ${mag} Deprem`,
                     body: place
                 },
-
                 android: {
                     priority: "high",
                     notification: {
                         channelId: "earthquake_channel"
                     }
                 },
-
                 apns: {
                     payload: {
                         aps: {
@@ -133,8 +129,6 @@ async function sendNotification(eq) {
                         }
                     }
                 },
-
-                // ✅ SADECE DATA
                 data: {
                     mag: mag.toString(),
                     place,
@@ -152,7 +146,6 @@ async function sendNotification(eq) {
         return;
     }
 
-    // 💸 3.5 altı skip
     if (mag < 3.5) return;
 
     const snapshot = await db
@@ -182,13 +175,10 @@ async function sendNotification(eq) {
 
         messages.push({
             token: user.token,
-
-            // ✅ KAYAN BİLDİRİM
             notification: {
                 title: `🚨 ${mag} Deprem`,
                 body: place
             },
-
             android: {
                 priority: "high",
                 ttl: 0,
@@ -196,7 +186,6 @@ async function sendNotification(eq) {
                     channelId: "earthquake_channel"
                 }
             },
-
             apns: {
                 payload: {
                     aps: {
@@ -208,8 +197,6 @@ async function sendNotification(eq) {
                     }
                 }
             },
-
-            // ✅ SADECE DATA
             data: {
                 mag: mag.toString(),
                 place,
@@ -219,55 +206,57 @@ async function sendNotification(eq) {
         });
     });
 
-   // 🔥 Batch gönderim
-for (let i = 0; i < messages.length; i += 500) {
-    const batch = messages.slice(i, i + 500);
+    // 🔥 Batch gönderim
+    for (let i = 0; i < messages.length; i += 500) {
+        const batch = messages.slice(i, i + 500);
 
-    try {
-        const response = await admin.messaging().sendEach(batch);
-        console.log(`✅ ${response.successCount} mesaj gönderildi`);
+        try {
+            const response = await admin.messaging().sendEach(batch);
+            console.log(`✅ ${response.successCount} mesaj gönderildi`);
 
-        response.responses.forEach((res, idx) => {
-            if (!res.success) {
-                const err = res.error?.code;
+            response.responses.forEach((res, idx) => {
+                if (!res.success) {
+                    const err = res.error?.code;
 
-                if (
-                    err === "messaging/registration-token-not-registered" ||
-                    err === "messaging/invalid-registration-token"
-                ) {
-                    invalidTokens.push(batch[idx].token);
+                    if (
+                        err === "messaging/registration-token-not-registered" ||
+                        err === "messaging/invalid-registration-token"
+                    ) {
+                        invalidTokens.push(batch[idx].token);
+                    }
                 }
-            }
-        });
-
-    } catch (error) {
-        console.error("❌ FCM Batch hatası:", error.message);
-    }
-}
-
-// ✅ BURAYA TAŞI
-if (invalidTokens.length > 0) {
-    console.log(`🧹 ${invalidTokens.length} geçersiz token temizleniyor...`);
-    const dbBatch = db.batch();
-
-    try {
-        for (const token of invalidTokens) {
-            const userDocs = await db.collection("users")
-                .where("token", "==", token)
-                .get();
-
-            userDocs.forEach(doc => {
-                dbBatch.delete(doc.ref);
             });
+
+        } catch (error) {
+            console.error("❌ FCM Batch hatası:", error.message);
         }
-
-        await dbBatch.commit();
-        console.log("✅ Geçersiz tokenlar silindi.");
-
-    } catch (e) {
-        console.error("❌ Temizlik sırasında hata:", e.message);
     }
-}
+
+    // 🧹 TOKEN CLEANUP
+    if (invalidTokens.length > 0) {
+        console.log(`🧹 ${invalidTokens.length} geçersiz token temizleniyor...`);
+        const dbBatch = db.batch();
+
+        try {
+            for (const token of invalidTokens) {
+                const userDocs = await db.collection("users")
+                    .where("token", "==", token)
+                    .get();
+
+                userDocs.forEach(doc => {
+                    dbBatch.delete(doc.ref);
+                });
+            }
+
+            await dbBatch.commit();
+            console.log("✅ Geçersiz tokenlar silindi.");
+
+        } catch (e) {
+            console.error("❌ Temizlik sırasında hata:", e.message);
+        }
+    }
+
+} // ✅🔥 BURASI EKSİKTİ (KRİTİK)
 /**
  * 🔍 Ana loop
  */
