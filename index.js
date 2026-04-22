@@ -65,32 +65,6 @@ function getDistance(lat1, lon1, lat2, lon2) {
 /**
  * 🔒 Duplicate kontrol (GELİŞTİRİLDİ)
  */
-async function checkAndMarkSent(id) {
-    if (sentCache.has(id)) return true;
-
-    const docRef = db.collection("sent").doc(id);
-
-    return await db.runTransaction(async (transaction) => {
-        const doc = await transaction.get(docRef);
-
-        if (doc.exists) {
-            sentCache.add(id);
-            return true;
-        }
-
-        transaction.set(docRef, {
-            sent: true,
-            time: admin.firestore.FieldValue.serverTimestamp()
-        });
-
-        sentCache.add(id);
-        return false;
-    });
-}
-
-/**
- * 📡 Bildirim gönder
- */
 async function sendNotification(eq) {
     const mag = Number(eq.properties?.mag || 0);
     const place = eq.properties?.place || "Deprem";
@@ -101,34 +75,36 @@ async function sendNotification(eq) {
     const lon = coords[0];
     const lat = coords[1];
 
-    // 🌍 GLOBAL
+    // 🌍 GLOBAL (4.5 ve üzeri her yere bildirim)
     if (mag >= 4.5) {
         console.log("🌍 GLOBAL TRIGGER:", mag, place);
-
-        await admin.messaging().send({
-            topic: "global",
-            android: { priority: "high" },
-            apns: { payload: { aps: { contentAvailable: true } } },
-            data: {
-                mag: mag.toString(),
-                place,
-                lat: lat.toString(),
-                lon: lon.toString(),
-                open_alarm: "true"
-            }
-        });
-
-        console.log("🌍 GLOBAL GÖNDERİLDİ");
+        try {
+            await admin.messaging().send({
+                topic: "global",
+                android: { priority: "high" },
+                apns: { payload: { aps: { contentAvailable: true } } },
+                data: {
+                    mag: mag.toString(),
+                    place,
+                    lat: lat.toString(),
+                    lon: lon.toString(),
+                    open_alarm: "true"
+                }
+            });
+            console.log("🌍 GLOBAL GÖNDERİLDİ");
+        } catch (e) {
+            console.error("❌ Global gönderim hatası:", e.message);
+        }
         return;
     }
 
-    // 💸 küçük deprem
+    // 💸 3.5 altı depremler için kişiye özel bildirim zahmetine girme
     if (mag < 3.5) return;
 
     const snapshot = await db
         .collection("users")
         .select("token", "lat", "lon", "minMag", "maxDist")
-        .limit(2000) // 🔥 PERFORMANCE
+        .limit(2000) // 🔥 Performans için limit
         .get();
 
     if (snapshot.empty) return;
@@ -143,53 +119,40 @@ async function sendNotification(eq) {
         const minMag = user.minMag || 3.0;
         const maxDist = user.maxDist || 500;
 
+        // Filtre: Büyüklük uygun mu?
         if (mag < minMag) return;
 
+        // Filtre: Mesafe uygun mu?
         if (user.lat && user.lon) {
             const dist = getDistance(user.lat, user.lon, lat, lon);
             if (dist > maxDist) return;
         }
 
-       messages.push({
-    token: user.token,
-
-    // 🔥 ANDROID CRITICAL
-    android: {
-        priority: "high",
-        ttl: 0
-    },
-
-    // 🍏 iOS background desteği
-    apns: {
-        payload: {
-            aps: {
-                contentAvailable: true
+        messages.push({
+            token: user.token,
+            android: { priority: "high", ttl: 0 },
+            apns: { payload: { aps: { contentAvailable: true } } },
+            data: {
+                mag: mag.toString(),
+                place,
+                lat: lat.toString(),
+                lon: lon.toString(),
+                open_alarm: "true"
             }
-        }
-    },
+        });
+    });
 
-    data: {
-        mag: mag.toString(),
-        place,
-        lat: lat.toString(),
-        lon: lon.toString(),
-        open_alarm: "true"
-    }
-});
-
-    // 🔥 batch gönderim
+    // 🔥 Batch Gönderim (500'erli gruplar)
     for (let i = 0; i < messages.length; i += 500) {
         const batch = messages.slice(i, i + 500);
-
         try {
             const response = await admin.messaging().sendEach(batch);
+            console.log(`✅ ${response.successCount} mesaj gönderildi`);
 
-            console.log(`✅ ${response.successCount} gönderildi`);
-
+            // Hatalı tokenları tespit et
             response.responses.forEach((res, idx) => {
                 if (!res.success) {
                     const err = res.error?.code;
-
                     if (
                         err === "messaging/registration-token-not-registered" ||
                         err === "messaging/invalid-registration-token"
@@ -198,27 +161,32 @@ async function sendNotification(eq) {
                     }
                 }
             });
-
         } catch (error) {
-            console.error("❌ FCM hata:", error.message);
+            console.error("❌ FCM Batch hatası:", error.message);
         }
     }
 
-    // 🧹 TOKEN TEMİZLE (OPTİMİZE)
+    // 🧹 TOKEN TEMİZLE (Optimize Edildi: Veri ve Kural Koruma)
     if (invalidTokens.length > 0) {
-        console.log(`🧹 ${invalidTokens.length} token siliniyor`);
-
-        const snapshot = await db.collection("users").get();
-        const batch = db.batch();
-
-        snapshot.forEach(doc => {
-            const data = doc.data();
-            if (invalidTokens.includes(data.token)) {
-                batch.delete(doc.ref);
+        console.log(`🧹 ${invalidTokens.length} geçersiz token temizleniyor...`);
+        const dbBatch = db.batch();
+        
+        try {
+            // Her geçersiz token için veritabanında hedefli arama yap
+            for (const token of invalidTokens) {
+                const userDocs = await db.collection("users")
+                    .where("token", "==", token)
+                    .get();
+                
+                userDocs.forEach(doc => {
+                    dbBatch.delete(doc.ref);
+                });
             }
-        });
-
-        await batch.commit();
+            await dbBatch.commit();
+            console.log("✅ Geçersiz tokenlar silindi.");
+        } catch (e) {
+            console.error("❌ Temizlik sırasında hata:", e.message);
+        }
     }
 }
 
