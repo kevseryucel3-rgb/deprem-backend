@@ -220,26 +220,70 @@ async function checkEarthquakes() {
     try {
         console.log("🔍 Deprem kontrol...");
 
-        const res = await fetch(
-            "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson"
-        );
+        // 🔥 USGS + KANDİLLİ
+        const [usgsRes, kandilliRes] = await Promise.all([
+            fetch("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson"),
+            fetch("https://api.orhanaydogdu.com.tr/deprem/kandilli/live")
+        ]);
 
-        const data = await res.json();
-        const quakes = data.features || [];
+        const usgsData = await usgsRes.json();
+        const kandilliData = await kandilliRes.json();
 
-        for (const eq of quakes) {
+        const usgsQuakes = usgsData.features || [];
+        const kandilliQuakes = kandilliData.result || [];
+
+        // 🌍 USGS
+        for (const eq of usgsQuakes) {
             const mag = Number(eq.properties?.mag || 0);
 
-            if (mag < 2.5) continue;
+            if (mag < 3.0) continue;
 
-            // 🔥 UNIQUE ID (GELİŞTİRİLDİ)
-            const uniqueId = `${eq.properties.time}_${eq.geometry.coordinates[0]}_${eq.geometry.coordinates[1]}`;
+            if (!eq.geometry || !eq.geometry.coordinates || eq.geometry.coordinates.length < 2) {
+                continue;
+            }
+
+            // 🔥 %100 TEKİL ID
+            if (!eq.id) continue;
+            const uniqueId = "usgs_" + eq.id;
 
             const alreadySent = await checkAndMarkSent(uniqueId);
 
             if (!alreadySent) {
-                console.log(`🚨 YENİ: ${eq.properties.place} (${mag})`);
+                console.log(`🌍 USGS: ${eq.properties.place} (${mag})`);
                 await sendNotification(eq);
+            }
+        }
+
+        // 🇹🇷 KANDİLLİ
+        for (const eq of kandilliQuakes) {
+
+            const mag = Number(eq.mag || 0);
+            if (mag < 3.0) continue;
+
+            const lat = Number(eq.geojson?.coordinates?.[1] || eq.lat);
+            const lon = Number(eq.geojson?.coordinates?.[0] || eq.lng);
+
+            if (!lat || !lon) continue;
+
+            // 🔥 %100 TEKİL ID
+            if (!eq._id) continue;
+            const uniqueId = "kandilli_" + eq._id;
+
+            const alreadySent = await checkAndMarkSent(uniqueId);
+
+            if (!alreadySent) {
+
+                console.log(`🇹🇷 KANDİLLİ: ${eq.title} (${mag})`);
+
+                await sendNotification({
+                    properties: {
+                        mag: mag,
+                        place: eq.title
+                    },
+                    geometry: {
+                        coordinates: [lon, lat]
+                    }
+                });
             }
         }
 
