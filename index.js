@@ -40,7 +40,7 @@ setInterval(() => {
 
 // 🔥 RENDER SLEEP ENGELLE (KEEP ALIVE)
 setInterval(() => {
-    fetch("https://senin-url.onrender.com/health");
+    fetch("https://deprem-backend-hgbp.onrender.com/health");
     console.log("🔄 keep-alive ping");
 }, 1000 * 60 * 5);
 
@@ -65,6 +65,28 @@ function getDistance(lat1, lon1, lat2, lon2) {
 /**
  * 🔒 Duplicate kontrol (GELİŞTİRİLDİ)
  */
+async function checkAndMarkSent(id) {
+    if (sentCache.has(id)) return true;
+
+    const docRef = db.collection("sent").doc(id);
+
+    return await db.runTransaction(async (transaction) => {
+        const doc = await transaction.get(docRef);
+
+        if (doc.exists) {
+            sentCache.add(id);
+            return true;
+        }
+
+        transaction.set(docRef, {
+            sent: true,
+            time: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        sentCache.add(id);
+        return false;
+    });
+}
 async function sendNotification(eq) {
     const mag = Number(eq.properties?.mag || 0);
     const place = eq.properties?.place || "Deprem";
