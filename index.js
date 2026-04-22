@@ -1,6 +1,7 @@
 const admin = require("firebase-admin");
 const cron = require("node-cron");
 const express = require("express");
+const fetch = require("node-fetch"); // 🔥 EKLENDİ
 
 const app = express();
 
@@ -26,6 +27,7 @@ admin.initializeApp({
 const db = admin.firestore();
 
 let isProcessing = false;
+let lastRun = 0; // 🔥 COOLDOWN
 
 // 🔥 RAM CACHE
 const sentCache = new Set();
@@ -54,7 +56,7 @@ function getDistance(lat1, lon1, lat2, lon2) {
 }
 
 /**
- * 🔒 Duplicate kontrol
+ * 🔒 Duplicate kontrol (GELİŞTİRİLDİ)
  */
 async function checkAndMarkSent(id) {
     if (sentCache.has(id)) return true;
@@ -94,6 +96,8 @@ async function sendNotification(eq) {
 
     // 🌍 GLOBAL
     if (mag >= 4.5) {
+        console.log("🌍 GLOBAL TRIGGER:", mag, place);
+
         await admin.messaging().send({
             topic: "global",
             android: { priority: "high" },
@@ -117,6 +121,7 @@ async function sendNotification(eq) {
     const snapshot = await db
         .collection("users")
         .select("token", "lat", "lon", "minMag", "maxDist")
+        .limit(2000) // 🔥 PERFORMANCE
         .get();
 
     if (snapshot.empty) return;
@@ -152,7 +157,7 @@ async function sendNotification(eq) {
         });
     });
 
-    // 🔥 batch
+    // 🔥 batch gönderim
     for (let i = 0; i < messages.length; i += 500) {
         const batch = messages.slice(i, i + 500);
 
@@ -179,18 +184,21 @@ async function sendNotification(eq) {
         }
     }
 
-    // 🧹 TOKEN TEMİZLE
+    // 🧹 TOKEN TEMİZLE (OPTİMİZE)
     if (invalidTokens.length > 0) {
         console.log(`🧹 ${invalidTokens.length} token siliniyor`);
 
         const snapshot = await db.collection("users").get();
+        const batch = db.batch();
 
         snapshot.forEach(doc => {
             const data = doc.data();
             if (invalidTokens.includes(data.token)) {
-                doc.ref.delete();
+                batch.delete(doc.ref);
             }
         });
+
+        await batch.commit();
     }
 }
 
@@ -198,6 +206,13 @@ async function sendNotification(eq) {
  * 🔍 Ana loop
  */
 async function checkEarthquakes() {
+
+    const now = Date.now();
+
+    // 🔥 COOLDOWN (spam önler)
+    if (now - lastRun < 15000) return;
+    lastRun = now;
+
     if (isProcessing) return;
 
     isProcessing = true;
@@ -217,7 +232,10 @@ async function checkEarthquakes() {
 
             if (mag < 2.5) continue;
 
-            const alreadySent = await checkAndMarkSent(eq.id);
+            // 🔥 UNIQUE ID (GELİŞTİRİLDİ)
+            const uniqueId = `${eq.properties.time}_${eq.geometry.coordinates[0]}_${eq.geometry.coordinates[1]}`;
+
+            const alreadySent = await checkAndMarkSent(uniqueId);
 
             if (!alreadySent) {
                 console.log(`🚨 YENİ: ${eq.properties.place} (${mag})`);
