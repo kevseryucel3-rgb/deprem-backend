@@ -44,7 +44,7 @@ setInterval(() => {
 
 // 🔥 RENDER SLEEP ENGELLE (KEEP ALIVE)
 setInterval(() => {
-    fetch("https://deprem-backend-hgbp.onrender.com/health");
+    fetch("https://deprem-backend-hqbp.onrender.com/health");
     console.log("🔄 keep-alive ping");
 }, 1000 * 60 * 5);
 
