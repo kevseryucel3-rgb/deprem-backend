@@ -386,14 +386,12 @@ app.get("/test", async (req, res) => {
         await admin.messaging().send({
             topic: "global",
 
-            // 🔥 ANDROID CRITICAL AYAR
             android: {
                 priority: "high",
                 ttl: 0
             },
 
-            // 🔥 (opsiyonel ama iyi) iOS için
-            apns: {mag: mag.toString(),
+            apns: {
                 payload: {
                     aps: {
                         contentAvailable: true
