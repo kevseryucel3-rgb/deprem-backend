@@ -133,7 +133,8 @@ async function sendNotification(eq) {
                     mag: mag.toString(),
                     place,
                     lat: lat.toString(),
-                    lon: lon.toString()
+                    lon: lon.toString(),
+                    open_alarm: "true" // 🌍 global always alarm
                 }
             });
 
@@ -150,7 +151,7 @@ async function sendNotification(eq) {
 
     const snapshot = await db
         .collection("users")
-        .select("token", "lat", "lon", "minMag", "maxDist")
+        .select("token", "lat", "lon", "minMag", "maxDist", "isPremium")
         .limit(2000)
         .get();
 
@@ -172,7 +173,21 @@ async function sendNotification(eq) {
             const dist = getDistance(user.lat, user.lon, lat, lon);
             if (dist > maxDist) return;
         }
+const isPremium = user.isPremium === true;
 
+let openAlarm = "false";
+
+if (isPremium && mag >= minMag) {
+    if (user.lat && user.lon) {
+        const dist = getDistance(user.lat, user.lon, lat, lon);
+
+        if (dist <= maxDist) {
+            openAlarm = "true";
+        }
+    } else {
+        openAlarm = "true";
+    }
+}
         messages.push({
             token: user.token,
             notification: {
@@ -201,7 +216,8 @@ async function sendNotification(eq) {
                 mag: mag.toString(),
                 place,
                 lat: lat.toString(),
-                lon: lon.toString()
+                lon: lon.toString(),
+                open_alarm: openAlarm // 🔥 EKLENDİ
             }
         });
     });
@@ -377,7 +393,7 @@ app.get("/test", async (req, res) => {
             },
 
             // 🔥 (opsiyonel ama iyi) iOS için
-            apns: {
+            apns: {mag: mag.toString(),
                 payload: {
                     aps: {
                         contentAvailable: true
