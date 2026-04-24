@@ -142,13 +142,15 @@ async function sendNotification(eq) {
                 },
 
                 data: {
-                    mag: mag.toString(),
-                    place,
-                    lat: lat.toString(),
-                    lon: lon.toString(),
-                    open_alarm: "false",
-                    source
-                }
+    mag: mag.toString(),
+    place,
+    lat: lat.toString(),
+    lon: lon.toString(),
+    depth: eq.properties?.depth?.toString() || "0",
+    time: eq.properties?.time || "",
+    open_alarm: "false",
+    source
+}
             });
 
         } catch (e) {
@@ -230,13 +232,15 @@ async function sendNotification(eq) {
             },
 
             data: {
-                mag: mag.toString(),
-                place,
-                lat: lat.toString(),
-                lon: lon.toString(),
-                open_alarm: openAlarm,
-                source
-            }
+    mag: mag.toString(),
+    place,
+    lat: lat.toString(),
+    lon: lon.toString(),
+    depth: eq.properties?.depth?.toString() || "0",
+    time: eq.properties?.time || "",
+    open_alarm: openAlarm,
+    source
+}
         });
     });
 
@@ -356,11 +360,13 @@ async function checkEarthquakes() {
 
                 console.log(`🇹🇷 KANDİLLİ: ${eq.title} (${mag})`);
 
-               await sendNotification({
+              await sendNotification({
     properties: {
         mag: mag,
         place: eq.title,
-        source: "kandilli" // 🔥 ŞART
+        source: "kandilli",
+        depth: eq.depth,        // 🔥 EKLE
+        time: eq.date           // 🔥 EKLE
     },
     geometry: {
         coordinates: [lon, lat]
