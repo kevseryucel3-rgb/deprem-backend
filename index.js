@@ -151,7 +151,7 @@ if (mag >= 3.0) {
     if (!isCritical) return;
 }
 
-    if (mag < 3.5) return;
+    if (mag < 3.0) return;
 
     const snapshot = await db
         .collection("users")
