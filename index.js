@@ -1,3 +1,4 @@
+bu kod şuan nasıl çalışırconsole.log("🔥 VERSION: 7777");
 const admin = require("firebase-admin");
 const cron = require("node-cron");
 const express = require("express");
@@ -392,22 +393,19 @@ app.get("/health", (req, res) => {
     });
 });
 
-// 🧪 TEST
+// 🧪 TEST (ALARM ZORLA)
 app.get("/test", async (req, res) => {
     try {
+        console.log("🧪 TEST ALARM GÖNDERİLİYOR...");
+
         await admin.messaging().send({
             topic: "global",
 
             android: {
                 priority: "high",
-                ttl: 0
-            },
-
-            apns: {
-                payload: {
-                    aps: {
-                        contentAvailable: true
-                    }
+                ttl: 0,
+                notification: {
+                    channelId: "earthquake_channel"
                 }
             },
 
@@ -416,12 +414,13 @@ app.get("/test", async (req, res) => {
                 lat: "39.9",
                 lon: "32.8",
                 place: "TEST DEPREM",
-                open_alarm: "false"
+                open_alarm: "true" // 🔥 KRİTİK SATIR
             }
         });
 
-        console.log("🧪 TEST GÖNDERİLDİ");
-        res.send("Test gönderildi 🚀");
+        console.log("✅ TEST ALARM GÖNDERİLDİ");
+
+        res.send("🚨 Alarm test gönderildi");
 
     } catch (e) {
         console.error("❌ TEST HATA:", e);
