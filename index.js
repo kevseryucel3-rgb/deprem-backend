@@ -299,7 +299,7 @@ async function checkEarthquakes() {
 
         const usgsQuakes = usgsData.features || [];
         const kandilliQuakes = kandilliData.result || [];
-
+        console.log("📡 Kandilli veri sayısı:", kandilliQuakes.length);
         // 🌍 USGS
         for (const eq of usgsQuakes) {
             const mag = Number(eq.properties?.mag || 0);
@@ -314,7 +314,7 @@ async function checkEarthquakes() {
             if (!eq.id) continue;
             const uniqueId = "usgs_" + eq.id;
 
-            const alreadySent = await checkAndMarkSent(uniqueId);
+            const alreadySent = await checkAndMarkSent(uniqueId, mag);
 
             if (!alreadySent) {
                 console.log(`🌍 USGS: ${eq.properties.place} (${mag})`);
@@ -337,7 +337,7 @@ async function checkEarthquakes() {
             if (!eq._id) continue;
             const uniqueId = "kandilli_" + eq._id;
 
-            const alreadySent = await checkAndMarkSent(uniqueId);
+            const alreadySent = await checkAndMarkSent(uniqueId, mag);
 
             if (!alreadySent) {
 
