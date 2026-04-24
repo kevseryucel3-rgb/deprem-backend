@@ -1,4 +1,4 @@
-console.log("🔥 VERSION: 7777");
+bu kod şuan nasıl çalışırconsole.log("🔥 VERSION: 7777");
 const admin = require("firebase-admin");
 const cron = require("node-cron");
 const express = require("express");
@@ -107,7 +107,7 @@ async function sendNotification(eq) {
 
         try {
             await admin.messaging().send({
-                token: "d7-41bONRwu6KiJ5lq-Nd5:APA91bH4Yb2KSjZf_U1wTYR716FyXQhK5UCKulgIIoqR6LkO80_93bxX9Wp6N8xdp-CVVPQqpfF0Y_HXQZ3GIcOoamwBPB-rML-zfqSzn1wFg6yOre02NFc",
+                topic: "global",
                 notification: {
                     title: `🚨 ${mag} Deprem`,
                     body: place
@@ -134,7 +134,7 @@ async function sendNotification(eq) {
                     place,
                     lat: lat.toString(),
                     lon: lon.toString(),
-                    open_alarm: "false" // 🌍 global always alarm
+                    open_alarm: mag >= 5.5 ? "true" : "false"
                 }
             });
 
@@ -160,45 +160,80 @@ async function sendNotification(eq) {
     const messages = [];
     const invalidTokens = [];
 
-    snapshot.forEach(doc => {
-        const user = doc.data();
-        if (!user.token) return;
+  snapshot.forEach(doc => {
+    const user = doc.data();
+    if (!user.token) return;
 
-       
-let openAlarm = "false";
-        messages.push({
-            token: user.token,
+    const userLat = Number(user.lat || 0);
+    const userLon = Number(user.lon || 0);
+
+    if (!userLat || !userLon) return;
+
+    const distance = getDistance(userLat, userLon, lat, lon);
+
+    let openAlarm = "false";
+
+    // =========================
+    // 🟢 FREE USER
+    // =========================
+    if (!user.isPremium) {
+
+        if (mag < 2.0) return;
+        if (distance > 1200) return;
+
+        openAlarm = "false"; // sadece notification
+    }
+
+    // =========================
+    // 🔴 PREMIUM USER
+    // =========================
+    if (user.isPremium) {
+
+        const minMag = Number(user.minMag || 1.0);
+        const maxDist = Number(user.maxDist || 500);
+
+        if (mag < minMag) return;
+        if (distance > maxDist) return;
+
+        openAlarm = "true"; // 🔥 alarm aç
+    }
+
+    // =========================
+    // 📩 MESAJ (AYNI KALDI)
+    // =========================
+    messages.push({
+        token: user.token,
+        notification: {
+            title: `🚨 ${mag} Deprem`,
+            body: place
+        },
+        android: {
+            priority: "high",
+            ttl: 0,
             notification: {
-                title: `🚨 ${mag} Deprem`,
-                body: place
-            },
-            android: {
-                priority: "high",
-                ttl: 0,
-                notification: {
-                    channelId: "earthquake_channel"
-                }
-            },
-            apns: {
-                payload: {
-                    aps: {
-                        alert: {
-                            title: `🚨 ${mag} Deprem`,
-                            body: place
-                        },
-                        sound: "default"
-                    }
-                }
-            },
-            data: {
-                mag: mag.toString(),
-                place,
-                lat: lat.toString(),
-                lon: lon.toString(),
-                open_alarm: openAlarm // 🔥 EKLENDİ
+                channelId: "earthquake_channel"
             }
-        });
+        },
+        apns: {
+            payload: {
+                aps: {
+                    alert: {
+                        title: `🚨 ${mag} Deprem`,
+                        body: place
+                    },
+                    sound: "default"
+                }
+            }
+        },
+        data: {
+            mag: mag.toString(),
+            place,
+            lat: lat.toString(),
+            lon: lon.toString(),
+            open_alarm: openAlarm // 🔥 artık dinamik
+        }
     });
+});
 
     // 🔥 Batch gönderim
     for (let i = 0; i < messages.length; i += 500) {
