@@ -304,7 +304,7 @@ async function checkEarthquakes() {
         for (const eq of usgsQuakes) {
             const mag = Number(eq.properties?.mag || 0);
 
-            if (mag < 3.0) continue;
+            if (mag < 2.0) continue;
 
             if (!eq.geometry || !eq.geometry.coordinates || eq.geometry.coordinates.length < 2) {
                 continue;
@@ -326,7 +326,7 @@ async function checkEarthquakes() {
         for (const eq of kandilliQuakes) {
 
             const mag = Number(eq.mag || 0);
-            if (mag < 3.0) continue;
+            if (mag < 1.0) continue;
 
             const lat = Number(eq.geojson?.coordinates?.[1] || eq.lat);
             const lon = Number(eq.geojson?.coordinates?.[0] || eq.lng);
