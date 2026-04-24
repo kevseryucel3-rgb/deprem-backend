@@ -108,6 +108,7 @@ async function sendNotification(eq) {
     const mag = Number(eq.properties?.mag || 0);
     const place = eq.properties?.place || "Deprem";
     const coords = eq.geometry?.coordinates || [];
+    const source = eq.properties?.source || "usgs";
 
     if (coords.length < 2) return;
 
@@ -124,6 +125,14 @@ async function sendNotification(eq) {
         try {
             await admin.messaging().send({
                 topic: "global",
+
+                notification: {
+                    title: source === "kandilli"
+                        ? `🇹🇷 ${mag} Kandilli Deprem`
+                        : `🌍 ${mag} Deprem`,
+                    body: place
+                },
+
                 android: {
                     priority: "high",
                     ttl: 3600,
@@ -131,24 +140,24 @@ async function sendNotification(eq) {
                         channelId: "earthquake_channel"
                     }
                 },
+
                 data: {
                     mag: mag.toString(),
                     place,
                     lat: lat.toString(),
                     lon: lon.toString(),
-                    open_alarm: "false"
+                    open_alarm: "false",
+                    source
                 }
             });
 
         } catch (e) {
             console.error("❌ Global gönderim hatası:", e.message);
         }
-
-     
     }
 
     // =========================
-    // 🚨 6.8+ → GLOBAL YOK (DOUBLE ENGEL)
+    // 🚨 6.8+ → GLOBAL YOK
     // =========================
     if (mag < 3.0) return;
 
@@ -174,24 +183,25 @@ async function sendNotification(eq) {
 
         const distance = getDistance(userLat, userLon, lat, lon);
 
-        let openAlarm = "false";
+        // 🇹🇷 KANDİLLİ → SADECE TÜRKİYE
+        if (source === "kandilli") {
+            const isInTurkey =
+                userLat >= 36 && userLat <= 42 &&
+                userLon >= 26 && userLon <= 45;
 
-        // =========================
-        // 🟢 FREE USER
-        // =========================
-        if (!user.isPremium) {
-
-            if (mag < 2.0) return;
-            if (distance > 1200) return;
-
-            openAlarm = "false";
+            if (!isInTurkey) return;
         }
 
-        // =========================
-        // 🔴 PREMIUM USER
-        // =========================
-        if (user.isPremium) {
+        let openAlarm = "false";
 
+        // 🟢 FREE
+        if (!user.isPremium) {
+            if (mag < 2.0) return;
+            if (distance > 1200) return;
+        }
+
+        // 🔴 PREMIUM
+        if (user.isPremium) {
             const minMag = Number(user.minMag || 1.0);
             const maxDist = Number(user.maxDist || 500);
 
@@ -201,11 +211,16 @@ async function sendNotification(eq) {
             openAlarm = "true";
         }
 
-        // =========================
-        // 📩 MESAJ
-        // =========================
         messages.push({
             token: user.token,
+
+            notification: {
+                title: source === "kandilli"
+                    ? `🇹🇷 ${mag} Kandilli Deprem`
+                    : `🌍 ${mag} Deprem`,
+                body: place
+            },
+
             android: {
                 priority: "high",
                 ttl: 3600,
@@ -213,19 +228,19 @@ async function sendNotification(eq) {
                     channelId: "earthquake_channel"
                 }
             },
+
             data: {
                 mag: mag.toString(),
                 place,
                 lat: lat.toString(),
                 lon: lon.toString(),
-                open_alarm: openAlarm
+                open_alarm: openAlarm,
+                source
             }
         });
     });
 
-    // =========================
-    // 🚀 BATCH GÖNDER
-    // =========================
+    // 🚀 BATCH
     for (let i = 0; i < messages.length; i += 500) {
         const batch = messages.slice(i, i + 500);
 
@@ -251,9 +266,7 @@ async function sendNotification(eq) {
         }
     }
 
-    // =========================
     // 🧹 TOKEN CLEANUP
-    // =========================
     if (invalidTokens.length > 0) {
         console.log(`🧹 ${invalidTokens.length} geçersiz token temizleniyor...`);
         const dbBatch = db.batch();
@@ -343,15 +356,16 @@ async function checkEarthquakes() {
 
                 console.log(`🇹🇷 KANDİLLİ: ${eq.title} (${mag})`);
 
-                await sendNotification({
-                    properties: {
-                        mag: mag,
-                        place: eq.title
-                    },
-                    geometry: {
-                        coordinates: [lon, lat]
-                    }
-                });
+               await sendNotification({
+    properties: {
+        mag: mag,
+        place: eq.title,
+        source: "kandilli" // 🔥 ŞART
+    },
+    geometry: {
+        coordinates: [lon, lat]
+    }
+});
             }
         }
 
