@@ -117,7 +117,7 @@ async function sendNotification(eq) {
     // =========================
     // 🌍 GLOBAL (SADECE 6.8 ALTINDA)
     // =========================
-    if (mag >= 3.0 && mag < 6.8) {
+    if (mag >= 1.0 && mag < 6.8) {
 
         console.log("🌍 GLOBAL:", mag, place);
 
