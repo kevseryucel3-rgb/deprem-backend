@@ -69,25 +69,38 @@ function getDistance(lat1, lon1, lat2, lon2) {
 /**
  * 🔒 Duplicate kontrol (GELİŞTİRİLDİ)
  */
-async function checkAndMarkSent(id) {
-    if (sentCache.has(id)) return true;
+async function checkAndMarkSent(id, newMag) {
 
     const docRef = db.collection("sent").doc(id);
 
     return await db.runTransaction(async (transaction) => {
+
         const doc = await transaction.get(docRef);
 
         if (doc.exists) {
-            sentCache.add(id);
-            return true;
+
+            const oldMag = doc.data().mag || 0;
+
+            // ❌ aynı magnitude → gönderme
+            if (newMag === oldMag) {
+                return true;
+            }
+
+            // ✅ farklıysa → gönder ve güncelle
+            transaction.update(docRef, {
+                mag: newMag,
+                time: admin.firestore.FieldValue.serverTimestamp()
+            });
+
+            return false;
         }
 
+        // 🆕 ilk kayıt
         transaction.set(docRef, {
-            sent: true,
+            mag: newMag,
             time: admin.firestore.FieldValue.serverTimestamp()
         });
 
-        sentCache.add(id);
         return false;
     });
 }
