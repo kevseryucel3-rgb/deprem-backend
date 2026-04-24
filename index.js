@@ -101,56 +101,42 @@ async function sendNotification(eq) {
     const lon = coords[0];
     const lat = coords[1];
 
+    // =========================
+    // 🌍 GLOBAL (SADECE 6.8 ALTINDA)
+    // =========================
+    if (mag >= 3.0 && mag < 6.8) {
 
-if (mag >= 3.0) {
+        console.log("🌍 GLOBAL:", mag, place);
 
-    const isCritical = mag >= 6.8; // 🚨 KRİTİK ALARM
-
-    console.log("🌍 GLOBAL:", mag, place, isCritical ? "🚨 ALARM" : "🔔");
-
-    try {
-        await admin.messaging().send({
-            topic: "global",
-            notification: {
-                title: `🚨 ${mag} Deprem`,
-                body: place
-            },
-            android: {
-                priority: "high",
-                notification: {
-                    channelId: "earthquake_channel"
-                }
-            },
-            apns: {
-                payload: {
-                    aps: {
-                        alert: {
-                            title: `🚨 ${mag} Deprem`,
-                            body: place
-                        },
-                        sound: "default"
+        try {
+            await admin.messaging().send({
+                topic: "global",
+                android: {
+                    priority: "high",
+                    ttl: 3600,
+                    notification: {
+                        channelId: "earthquake_channel"
                     }
+                },
+                data: {
+                    mag: mag.toString(),
+                    place,
+                    lat: lat.toString(),
+                    lon: lon.toString(),
+                    open_alarm: "false"
                 }
-            },
-            data: {
-                mag: mag.toString(),
-                place,
-                lat: lat.toString(),
-                lon: lon.toString(),
-                open_alarm: isCritical ? "true" : "false" // 🔥 6.8+ alarm
-            }
-        });
+            });
 
-    } catch (e) {
-        console.error("❌ Global gönderim hatası:", e.message);
+        } catch (e) {
+            console.error("❌ Global gönderim hatası:", e.message);
+        }
+
+        return;
     }
 
-    // ⚠️ 3.0–6.8 arası sadece global gitsin
-    // 6.8+ zaten alarm → user loop'a girsin (premium için)
-    
-    if (!isCritical) return;
-}
-
+    // =========================
+    // 🚨 6.8+ → GLOBAL YOK (DOUBLE ENGEL)
+    // =========================
     if (mag < 3.0) return;
 
     const snapshot = await db
@@ -164,82 +150,69 @@ if (mag >= 3.0) {
     const messages = [];
     const invalidTokens = [];
 
-  snapshot.forEach(doc => {
-    const user = doc.data();
-    if (!user.token) return;
+    snapshot.forEach(doc => {
+        const user = doc.data();
+        if (!user.token) return;
 
-    const userLat = Number(user.lat || 0);
-    const userLon = Number(user.lon || 0);
+        const userLat = Number(user.lat || 0);
+        const userLon = Number(user.lon || 0);
 
-    if (!userLat || !userLon) return;
+        if (!userLat || !userLon) return;
 
-    const distance = getDistance(userLat, userLon, lat, lon);
+        const distance = getDistance(userLat, userLon, lat, lon);
 
-    let openAlarm = "false";
+        let openAlarm = "false";
 
-    // =========================
-    // 🟢 FREE USER
-    // =========================
-    if (!user.isPremium) {
+        // =========================
+        // 🟢 FREE USER
+        // =========================
+        if (!user.isPremium) {
 
-        if (mag < 2.0) return;
-        if (distance > 1200) return;
+            if (mag < 2.0) return;
+            if (distance > 1200) return;
 
-        openAlarm = "false"; // sadece notification
-    }
-
-    // =========================
-    // 🔴 PREMIUM USER
-    // =========================
-    if (user.isPremium) {
-
-        const minMag = Number(user.minMag || 1.0);
-        const maxDist = Number(user.maxDist || 500);
-
-        if (mag < minMag) return;
-        if (distance > maxDist) return;
-
-        openAlarm = "true"; // 🔥 alarm aç
-    }
-
-    // =========================
-    // 📩 MESAJ (AYNI KALDI)
-    // =========================
-    messages.push({
-        token: user.token,
-        notification: {
-            title: `🚨 ${mag} Deprem`,
-            body: place
-        },
-        android: {
-            priority: "high",
-            ttl: 0,
-            notification: {
-                channelId: "earthquake_channel"
-            }
-        },
-        apns: {
-            payload: {
-                aps: {
-                    alert: {
-                        title: `🚨 ${mag} Deprem`,
-                        body: place
-                    },
-                    sound: "default"
-                }
-            }
-        },
-        data: {
-            mag: mag.toString(),
-            place,
-            lat: lat.toString(),
-            lon: lon.toString(),
-            open_alarm: openAlarm // 🔥 artık dinamik
+            openAlarm = "false";
         }
-    });
-});
 
-    // 🔥 Batch gönderim
+        // =========================
+        // 🔴 PREMIUM USER
+        // =========================
+        if (user.isPremium) {
+
+            const minMag = Number(user.minMag || 1.0);
+            const maxDist = Number(user.maxDist || 500);
+
+            if (mag < minMag) return;
+            if (distance > maxDist) return;
+
+            openAlarm = "true";
+        }
+
+        // =========================
+        // 📩 MESAJ
+        // =========================
+        messages.push({
+            token: user.token,
+            android: {
+                priority: "high",
+                ttl: 3600,
+                notification: {
+                    channelId: "earthquake_channel"
+                }
+            },
+            data: {
+                mag: mag.toString(),
+                place,
+                lat: lat.toString(),
+                lon: lon.toString(),
+                open_alarm: openAlarm
+            }
+        });
+    });
+
+    // =========================
+    // 🚀 BATCH GÖNDER
+    // =========================
     for (let i = 0; i < messages.length; i += 500) {
         const batch = messages.slice(i, i + 500);
 
@@ -265,31 +238,25 @@ if (mag >= 3.0) {
         }
     }
 
+    // =========================
     // 🧹 TOKEN CLEANUP
+    // =========================
     if (invalidTokens.length > 0) {
         console.log(`🧹 ${invalidTokens.length} geçersiz token temizleniyor...`);
         const dbBatch = db.batch();
 
-        try {
-            for (const token of invalidTokens) {
-                const userDocs = await db.collection("users")
-                    .where("token", "==", token)
-                    .get();
+        for (const token of invalidTokens) {
+            const userDocs = await db.collection("users")
+                .where("token", "==", token)
+                .get();
 
-                userDocs.forEach(doc => {
-                    dbBatch.delete(doc.ref);
-                });
-            }
-
-            await dbBatch.commit();
-            console.log("✅ Geçersiz tokenlar silindi.");
-
-        } catch (e) {
-            console.error("❌ Temizlik sırasında hata:", e.message);
+            userDocs.forEach(doc => dbBatch.delete(doc.ref));
         }
-    }
 
-} // ✅🔥 BURASI EKSİKTİ (KRİTİK)
+        await dbBatch.commit();
+        console.log("✅ Geçersiz tokenlar silindi.");
+    }
+}
 /**
  * 🔍 Ana loop
  */
