@@ -101,51 +101,55 @@ async function sendNotification(eq) {
     const lon = coords[0];
     const lat = coords[1];
 
-    // 🌍 GLOBAL (4.5 ve üzeri)
-    if (mag >= 4.5) {
-        console.log("🌍 GLOBAL TRIGGER:", mag, place);
 
-        try {
-            await admin.messaging().send({
-                topic: "global",
+if (mag >= 3.0) {
+
+    const isCritical = mag >= 6.8; // 🚨 KRİTİK ALARM
+
+    console.log("🌍 GLOBAL:", mag, place, isCritical ? "🚨 ALARM" : "🔔");
+
+    try {
+        await admin.messaging().send({
+            topic: "global",
+            notification: {
+                title: `🚨 ${mag} Deprem`,
+                body: place
+            },
+            android: {
+                priority: "high",
                 notification: {
-                    title: `🚨 ${mag} Deprem`,
-                    body: place
-                },
-                android: {
-                    priority: "high",
-                    notification: {
-                        channelId: "earthquake_channel"
-                    }
-                },
-                apns: {
-                    payload: {
-                        aps: {
-                            alert: {
-                                title: `🚨 ${mag} Deprem`,
-                                body: place
-                            },
-                            sound: "default"
-                        }
-                    }
-                },
-                data: {
-                    mag: mag.toString(),
-                    place,
-                    lat: lat.toString(),
-                    lon: lon.toString(),
-                    open_alarm: mag >= 5.5 ? "true" : "false"
+                    channelId: "earthquake_channel"
                 }
-            });
+            },
+            apns: {
+                payload: {
+                    aps: {
+                        alert: {
+                            title: `🚨 ${mag} Deprem`,
+                            body: place
+                        },
+                        sound: "default"
+                    }
+                }
+            },
+            data: {
+                mag: mag.toString(),
+                place,
+                lat: lat.toString(),
+                lon: lon.toString(),
+                open_alarm: isCritical ? "true" : "false" // 🔥 6.8+ alarm
+            }
+        });
 
-            console.log("🌍 GLOBAL GÖNDERİLDİ");
-
-        } catch (e) {
-            console.error("❌ Global gönderim hatası:", e.message);
-        }
-
-        return;
+    } catch (e) {
+        console.error("❌ Global gönderim hatası:", e.message);
     }
+
+    // ⚠️ 3.0–6.8 arası sadece global gitsin
+    // 6.8+ zaten alarm → user loop'a girsin (premium için)
+    
+    if (!isCritical) return;
+}
 
     if (mag < 3.5) return;
 
