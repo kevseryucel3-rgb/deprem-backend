@@ -144,7 +144,7 @@ async function sendNotification(eq) {
             console.error("❌ Global gönderim hatası:", e.message);
         }
 
-        return;
+     
     }
 
     // =========================
@@ -335,7 +335,7 @@ async function checkEarthquakes() {
 
             // 🔥 %100 TEKİL ID
             if (!eq._id) continue;
-            const uniqueId = "kandilli_" + eq._id;
+            const uniqueId = "kandilli_" + eq._id + "_" + Math.floor(mag * 10);
 
             const alreadySent = await checkAndMarkSent(uniqueId, mag);
 
