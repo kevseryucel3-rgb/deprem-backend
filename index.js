@@ -107,7 +107,7 @@ async function sendNotification(eq) {
 
         try {
             await admin.messaging().send({
-                topic: "global",
+                token: "d7-41bONRwu6KiJ5lq-Nd5:APA91bH4Yb2KSjZf_U1wTYR716FyXQhK5UCKulgIIoqR6LkO80_93bxX9Wp6N8xdp-CVVPQqpfF0Y_HXQZ3GIcOoamwBPB-rML-zfqSzn1wFg6yOre02NFc",
                 notification: {
                     title: `🚨 ${mag} Deprem`,
                     body: place
@@ -134,7 +134,7 @@ async function sendNotification(eq) {
                     place,
                     lat: lat.toString(),
                     lon: lon.toString(),
-                    open_alarm: "true" // 🌍 global always alarm
+                    open_alarm: "false" // 🌍 global always alarm
                 }
             });
 
@@ -164,30 +164,8 @@ async function sendNotification(eq) {
         const user = doc.data();
         if (!user.token) return;
 
-        const minMag = user.minMag || 3.0;
-        const maxDist = user.maxDist || 500;
-
-        if (mag < minMag) return;
-
-        if (user.lat && user.lon) {
-            const dist = getDistance(user.lat, user.lon, lat, lon);
-            if (dist > maxDist) return;
-        }
-const isPremium = user.isPremium === true;
-
+       
 let openAlarm = "false";
-
-if (isPremium && mag >= minMag) {
-    if (user.lat && user.lon) {
-        const dist = getDistance(user.lat, user.lon, lat, lon);
-
-        if (dist <= maxDist) {
-            openAlarm = "true";
-        }
-    } else {
-        openAlarm = "true";
-    }
-}
         messages.push({
             token: user.token,
             notification: {
@@ -404,7 +382,7 @@ app.get("/test", async (req, res) => {
                 lat: "39.9",
                 lon: "32.8",
                 place: "TEST DEPREM",
-                open_alarm: "true"
+                open_alarm: "false"
             }
         });
 
