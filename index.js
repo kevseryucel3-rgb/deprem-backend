@@ -341,6 +341,40 @@ app.get("/health", (req, res) => {
         time: new Date()
     });
 });
+// ======================
+// 🧪 TEST (ALARM ZORLA)
+// ======================
+app.get("/test", async (req, res) => {
+    try {
+        console.log("🧪 TEST ALARM GÖNDERİLİYOR...");
+
+        await admin.messaging().send({
+            topic: "global",
+
+            android: {
+                priority: "high"
+            },
+
+            data: {
+                title: "🚨 TEST",
+                body: "Test alarm",
+                mag: "5.5",
+                lat: "39.9",
+                lon: "32.8",
+                depth: "10",
+                open_alarm: "true"
+            }
+        });
+
+        console.log("✅ TEST ALARM GÖNDERİLDİ");
+
+        res.send("🚨 Test gönderildi");
+
+    } catch (e) {
+        console.error("❌ TEST HATA:", e);
+        res.send("Hata: " + e.message);
+    }
+});
 
 // ======================
 const PORT = process.env.PORT || 10000;
