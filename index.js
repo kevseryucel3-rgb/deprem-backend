@@ -306,42 +306,48 @@ async function checkEarthquakes() {
     }
 }
 
-// 🇹🇷 KANDİLLİ (FIXED)
-for (const eq of kandilliList) {
+        // 🇹🇷 KANDİLLİ
+        for (const eq of kandilliList) {
 
-    try {
-        const mag = parseFloat(eq.mag || eq.ml || eq.md);
-        if (isNaN(mag)) continue;
+            try {
+                const mag = parseFloat(eq.mag || eq.ml || eq.md);
+                if (isNaN(mag)) continue;
 
-        const lat = Number(eq.geojson?.coordinates?.[1] || eq.lat);
-        const lon = Number(eq.geojson?.coordinates?.[0] || eq.lng);
-        const depth = Number(eq.depth || 0);
+                const lat = Number(eq.geojson?.coordinates?.[1] || eq.lat);
+                const lon = Number(eq.geojson?.coordinates?.[0] || eq.lng);
+                const depth = Number(eq.depth || 0);
 
-        if (!lat || !lon) continue;
+                if (!lat || !lon) continue;
 
-        // 🔥 UNIQUE ID (ARTIK _id YOK!)
-        const id = `kandilli_${lat}_${lon}_${mag}`;
+                const id = `kandilli_${lat}_${lon}_${mag}`;
 
-        const sent = await checkAndMarkSent(id, mag);
+                const sent = await checkAndMarkSent(id, mag);
 
-        if (!sent) {
-            console.log("🇹🇷 KANDİLLİ GÖNDERİLİYOR:", mag, eq.title);
+                if (!sent) {
+                    console.log("🇹🇷 KANDİLLİ:", mag, eq.title);
 
-            await sendNotification({
-                properties: {
-                    mag,
-                    place: eq.title || "Türkiye",
-                    source: "kandilli"
-                },
-                geometry: {
-                    coordinates: [lon, lat, depth]
+                    await sendNotification({
+                        properties: {
+                            mag,
+                            place: eq.title || "Türkiye",
+                            source: "kandilli"
+                        },
+                        geometry: {
+                            coordinates: [lon, lat, depth]
+                        }
+                    });
                 }
-            });
+
+            } catch (err) {
+                console.error("❌ KANDİLLİ HATA:", err.message);
+            }
         }
 
-    } catch (err) {
-        console.error("❌ KANDİLLİ PARSE HATA:", err.message);
+    } catch (e) {
+        console.error("❌ HATA:", e.message);
     }
+
+    isProcessing = false;
 }
 // ======================
 cron.schedule("*/30 * * * * *", checkEarthquakes);
