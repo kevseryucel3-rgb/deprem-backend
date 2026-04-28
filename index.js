@@ -169,8 +169,8 @@ async function sendNotification(eq) {
         // 🛡️ KURAL KORUMA: Premium vs Ücretsiz Ayrımı
         // ==========================================
         if (user.isPremium === true) {
-           const minMag = Number(user.minMag ?? user.min_mag_limit ?? 1);
-const maxDist = Number(user.maxDist ?? user.max_dist_limit ?? 500);
+         const minMag = Number(user.minMag || 1);
+const maxDist = Number(user.maxDist || 500);
 
             // 🔥 KURAL: 5.5 üzeriyse mesafe bakmaksızın ÇAL 
             // VEYA kullanıcının kendi belirlediği limitler tutuyorsa ÇAL
