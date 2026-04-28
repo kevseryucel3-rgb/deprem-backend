@@ -115,26 +115,26 @@ async function sendNotification(eq) {
     // ======================
     // 🌍 GLOBAL BÜYÜK
     // ======================
-    if (mag >= 5.5) {
-        await admin.messaging().send({
-            topic: "global",
-
-            data: {
-                title: `🚨 ${mag} Büyük Deprem`,
-                body: `${place} | ⛏ ${depth} km`,
-                mag: String(mag),
-                lat: String(lat),
-                lon: String(lon),
-                depth: String(depth),
-                source,
-                open_alarm: "true"
-            },
-
-            android: { priority: "high" }
-        });
-
-        return;
-    }
+   // index.js içindeki ilgili kısım
+if (mag >= 5.5) { // 5.5 üstü depremlerde alarm yetkisi gönderiliyor
+    await admin.messaging().send({
+        topic: "global",
+        data: {
+            title: `🚨 ${mag} Büyük Deprem`,
+            body: `${place} | ⛏ ${depth} km`,
+            mag: String(mag),
+            lat: String(lat),
+            lon: String(lon),
+            depth: String(depth),
+            source: source,
+            open_alarm: "true" // 🔔 Flutter bunu görünce kriter kontrolü yapıp AlarmService'i başlatacak
+        },
+        android: { 
+            priority: "high" // ⚡ Uykudaki cihazları uyandırmak için zorunlu
+        }
+    });
+    return;
+}
 
     // ======================
     // 📍 USER FILTER
@@ -275,7 +275,8 @@ async function checkEarthquakes() {
             if (mag < 2) continue;
             if (!eq.id) continue;
 
-            const id = "usgs_" + eq.id;
+            const uniqueId = `${mag}_${lat.toFixed(2)}_${lon.toFixed(2)}`;
+const id = uniqueId;
 
             const sent = await checkAndMarkSent(id, mag);
 
