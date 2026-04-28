@@ -199,18 +199,22 @@ const maxDist = Number(user.maxDist ?? user.max_dist_limit ?? 500);
                 title: source === "kandilli" ? `🇹🇷 ${mag} Kandilli` : `🌍 ${mag} Deprem`,
                 body: `${place}\n📏 ${distance} km | ⛏ ${depth} km`,
             },
-            data: {
-                // 🛡️ VERİ KORUMA: Tüm FCM data değerleri STRING olmalıdır.
-                title: source === "kandilli" ? `🇹🇷 ${mag} Kandilli` : `🌍 ${mag} Deprem`,
-                body: `${place}\n📏 ${distance} km | ⛏ ${depth} km`,
-                mag: String(mag),
-                lat: String(lat),
-                lon: String(lon),
-                depth: String(depth),
-                distance: String(distance),
-                source: source,
-                open_alarm: openAlarmFlag
-            },
+       data: {
+    title: source === "kandilli"
+        ? `${mag} Kandilli`
+        : `${mag} Deprem`,
+
+    body: `${place} | ${distance} km | ${depth} km`,
+
+    place: place,
+    mag: String(mag),
+    lat: String(lat),
+    lon: String(lon),
+    depth: String(depth),
+    distance: String(distance),
+    source: source,
+    open_alarm: openAlarmFlag
+},
             android: { 
                 priority: "high",
                 // 🛡️ KOD KORUMA: Android özel bildirim kanalı ve yüksek öncelik
