@@ -154,7 +154,7 @@ async function sendNotification(eq) {
 
         const distance = getDistance(userLat, userLon, lat, lon);
 
-        // 🇹🇷 KANDİLLİ ÖZEL KURALI: Türkiye sınırları dışında Kandilli bildirimi gönderilmez.
+    // 🇹🇷 KANDİLLİ ÖZEL KURALI: Türkiye sınırları dışında Kandilli bildirimi gönderilmez.
         if (source === "kandilli") {
             const isTR =
                 userLat >= 34 && userLat <= 44 &&
@@ -162,34 +162,45 @@ async function sendNotification(eq) {
             if (!isTR) return;
         }
 
-       let canSend = false;
-let openAlarmFlag = "false";
+        let canSend = false;
+        let openAlarmFlag = "false";
 
-if (user.isPremium === true) {
-    const minMag = Number(user.minMag || 1);
-    const maxDist = Number(user.maxDist || 500);
+        // ==========================================
+        // 🛡️ KURAL KORUMA: Premium vs Ücretsiz Ayrımı
+        // ==========================================
+        if (user.isPremium === true) {
+            const minMag = Number(user.minMag || 1);
+            const maxDist = Number(user.maxDist || 500);
 
-    // 🔥 KURAL: 5.5 üzeriyse mesafe bakmaksızın ÇAL 
-    // VEYA kullanıcının kendi belirlediği limitler tutuyorsa ÇAL
-    if (mag >= 5.5 || (mag >= minMag && distance <= maxDist)) {
-        canSend = true;
-        openAlarmFlag = "true"; // 🔥 Sadece bu Premium kullanıcıda alarm çalacak
-    }
-} else {
-    // Ücretsiz kullanıcı 5.5+ depremi yukarıdaki Global'den aldı zaten.
-    // Burada sadece 3.0+ ve yakınındaysa bildirim gitsin ama ALARM ÇALMASIN.
-    if (mag >= 3.0 && distance <= 300) {
-        canSend = true;
-        openAlarmFlag = "false"; 
-    }
-}
+            // 🔥 KURAL: 5.5 üzeriyse mesafe bakmaksızın ÇAL 
+            // VEYA kullanıcının kendi belirlediği limitler tutuyorsa ÇAL
+            if (mag >= 5.5 || (mag >= minMag && distance <= maxDist)) {
+                canSend = true;
+                openAlarmFlag = "true"; 
+            }
+        } else {
+            // 🔥 KURAL GÜNCELLEMESİ: 2.0 üzeri depremler kayan bildirim olarak gitmeli.
+            // Ücretsiz kullanıcılar için 2.0+ ve 1200km sınırı (Flutter tarafındaki hard limit ile uyumlu)
+            if (mag >= 2.0 && distance <= 1200) {
+                canSend = true;
+                openAlarmFlag = "false"; 
+            }
+        }
 
         if (!canSend) return;
 
-        // 🛡️ VERİ KORUMA: Tüm FCM data değerleri STRING olmalıdır.
+        // ==========================================
+        // 🛡️ VERİ & BİLDİRİM KORUMA
+        // ==========================================
         messages.push({
             token: user.token,
+            // 🔔 BİLDİRİM KORUMA: Kayan bildirim (Heads-up) için 'notification' şarttır.
+            notification: {
+                title: source === "kandilli" ? `🇹🇷 ${mag} Kandilli` : `🌍 ${mag} Deprem`,
+                body: `${place}\n📏 ${distance} km | ⛏ ${depth} km`,
+            },
             data: {
+                // 🛡️ VERİ KORUMA: Tüm FCM data değerleri STRING olmalıdır.
                 title: source === "kandilli" ? `🇹🇷 ${mag} Kandilli` : `🌍 ${mag} Deprem`,
                 body: `${place}\n📏 ${distance} km | ⛏ ${depth} km`,
                 mag: String(mag),
@@ -200,7 +211,16 @@ if (user.isPremium === true) {
                 source: source,
                 open_alarm: openAlarmFlag
             },
-            android: { priority: "high" }
+            android: { 
+                priority: "high",
+                // 🛡️ KOD KORUMA: Android özel bildirim kanalı ve yüksek öncelik
+                notification: {
+                    channelId: "earthquake_channel", // Flutter tarafındaki kanal ID ile aynı
+                    priority: "high", // Kayan bildirim için yüksek öncelik
+                    sound: "default",
+                    clickAction: "FLUTTER_NOTIFICATION_CLICK"
+                }
+            }
         });
     });
 
@@ -215,6 +235,7 @@ if (user.isPremium === true) {
     for (let i = 0; i < messages.length; i += 500) {
         const batch = messages.slice(i, i + 500);
         try {
+            // sendEach kullanarak güvenli ve hızlı toplu gönderim
             const res = await admin.messaging().sendEach(batch);
             
             // Hatalı tokenları temizleme süreci
@@ -228,9 +249,13 @@ if (user.isPremium === true) {
                     }
                 }
             });
-            if (invalidTokens.length > 0) await cleanInvalidTokens(invalidTokens);
             
-            console.log(`✅ ${res.successCount} adet bireysel bildirim gönderildi.`);
+            if (invalidTokens.length > 0) {
+                console.log(`🧹 ${invalidTokens.length} adet geçersiz token temizleniyor...`);
+                await cleanInvalidTokens(invalidTokens);
+            }
+            
+            console.log(`✅ ${res.successCount} adet bireysel bildirim iletildi.`);
         } catch (e) {
             console.error("❌ FCM Batch Hatası:", e.message);
         }
@@ -341,25 +366,24 @@ app.get("/test", async (req, res) => {
 
         await admin.messaging().send({
             topic: "global",
-
             android: {
                 priority: "high"
             },
-
             data: {
-                title: "🚨 TEST",
-                body: "Test alarm",
-                mag: "5.5",
+                id: "test_alarm_123", // 🔥 BU SATIRI EKLE (Eksik olan bu)
+                title: "🚨 TEST ALARMI",
+                body: "Bu bir simülasyon alarmıdır.",
+                mag: "6.0",
                 lat: "39.9",
                 lon: "32.8",
                 depth: "10",
-                open_alarm: "true"
+                open_alarm: "true", // Alarmı tetikler
+                source: "test"
             }
         });
 
         console.log("✅ TEST ALARM GÖNDERİLDİ");
-
-        res.send("🚨 Test gönderildi");
+        res.send("🚨 Test gönderildi (ID dahil)");
 
     } catch (e) {
         console.error("❌ TEST HATA:", e);
