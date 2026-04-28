@@ -102,7 +102,6 @@ async function cleanInvalidTokens(tokens) {
 // 🔔 NOTIFICATION
 // ======================
 async function sendNotification(eq) {
-
     const mag = Number(eq.properties.mag || 0);
     const place = String(eq.properties.place || "Deprem");
     const source = eq.properties.source || "usgs";
@@ -110,41 +109,42 @@ async function sendNotification(eq) {
     const [lon, lat, depthRaw] = eq.geometry.coordinates;
     const depth = Math.round(depthRaw || 0);
 
-    console.log("📨", source, mag, place);
+    console.log(`📨 İşlem Başladı: ${source} | Şiddet: ${mag} | Yer: ${place}`);
 
-    // ======================
-    // 🌍 GLOBAL BÜYÜK
-    // ======================
-   // index.js içindeki ilgili kısım
-if (mag >= 5.5) { // 5.5 üstü depremlerde alarm yetkisi gönderiliyor
-    await admin.messaging().send({
-        topic: "global",
-        data: {
-            title: `🚨 ${mag} Büyük Deprem`,
-            body: `${place} | ⛏ ${depth} km`,
-            mag: String(mag),
-            lat: String(lat),
-            lon: String(lon),
-            depth: String(depth),
-            source: source,
-            open_alarm: "true" // 🔔 Flutter bunu görünce kriter kontrolü yapıp AlarmService'i başlatacak
-        },
-        android: { 
-            priority: "high" // ⚡ Uykudaki cihazları uyandırmak için zorunlu
+    // ==========================================
+    // 🌍 KURAL 1: GLOBAL BÜYÜK DEPREM (5.5+)
+    // ==========================================
+    if (mag >= 5.5) {
+        try {
+            await admin.messaging().send({
+                topic: "global",
+                data: {
+                    title: `🚨 ${mag} Büyük Deprem`,
+                    body: `${place} | ⛏ ${depth} km`,
+                    mag: String(mag),
+                    lat: String(lat),
+                    lon: String(lon),
+                    depth: String(depth),
+                    source: source,
+                    open_alarm: "false"
+                },
+                android: { priority: "high" }
+            });
+            console.log("✅ Global (5.5+) mesajı iletildi.");
+        } catch (e) {
+            console.error("❌ Global gönderim hatası:", e.message);
         }
-    });
-    return;
-}
+        // 🔥 VERİ KORUMA: Buradaki 'return' silindi. 
+        // Böylece Kandilli depremi 5.5+ olsa bile aşağıdaki bireysel mesafe kontrolü çalışacak.
+    }
 
-    // ======================
-    // 📍 USER FILTER
-    // ======================
+    // ==========================================
+    // 📍 KURAL 2: KİŞİSELLEŞTİRİLMİŞ FİLTRELEME
+    // ==========================================
     const snapshot = await db.collection("users").limit(2000).get();
-
     const messages = [];
 
     snapshot.forEach(doc => {
-
         const user = doc.data();
         if (!user.token) return;
 
@@ -154,90 +154,85 @@ if (mag >= 5.5) { // 5.5 üstü depremlerde alarm yetkisi gönderiliyor
 
         const distance = getDistance(userLat, userLon, lat, lon);
 
-        // 🇹🇷 Kandilli sadece TR
+        // 🇹🇷 KANDİLLİ ÖZEL KURALI: Türkiye sınırları dışında Kandilli bildirimi gönderilmez.
         if (source === "kandilli") {
             const isTR =
-                userLat >= 36 && userLat <= 42 &&
-                userLon >= 26 && userLon <= 45;
-
+                userLat >= 34 && userLat <= 44 &&
+                userLon >= 24 && userLon <= 47; 
             if (!isTR) return;
         }
 
-        let send = false;
-        let openAlarm = "false";
+       let canSend = false;
+let openAlarmFlag = "false";
 
-        // 🟢 FREE
-        if (!user.isPremium) {
-            if (mag >= 3.0 && distance <= 300) send = true;
-        }
+if (user.isPremium === true) {
+    const minMag = Number(user.minMag || 1);
+    const maxDist = Number(user.maxDist || 500);
 
-        // 🔴 PREMIUM
-        if (user.isPremium) {
-            const minMag = Number(user.minMag || 1);
-            const maxDist = Number(user.maxDist || 500);
+    // 🔥 KURAL: 5.5 üzeriyse mesafe bakmaksızın ÇAL 
+    // VEYA kullanıcının kendi belirlediği limitler tutuyorsa ÇAL
+    if (mag >= 5.5 || (mag >= minMag && distance <= maxDist)) {
+        canSend = true;
+        openAlarmFlag = "true"; // 🔥 Sadece bu Premium kullanıcıda alarm çalacak
+    }
+} else {
+    // Ücretsiz kullanıcı 5.5+ depremi yukarıdaki Global'den aldı zaten.
+    // Burada sadece 3.0+ ve yakınındaysa bildirim gitsin ama ALARM ÇALMASIN.
+    if (mag >= 3.0 && distance <= 300) {
+        canSend = true;
+        openAlarmFlag = "false"; 
+    }
+}
 
-            if (mag >= minMag && distance <= maxDist) {
-                send = true;
-                openAlarm = "true";
-            }
-        }
+        if (!canSend) return;
 
-        if (!send) return;
-
+        // 🛡️ VERİ KORUMA: Tüm FCM data değerleri STRING olmalıdır.
         messages.push({
             token: user.token,
-
             data: {
-                title: source === "kandilli"
-                    ? `🇹🇷 ${mag} Kandilli Deprem`
-                    : `🌍 ${mag} Deprem`,
-
+                title: source === "kandilli" ? `🇹🇷 ${mag} Kandilli` : `🌍 ${mag} Deprem`,
                 body: `${place}\n📏 ${distance} km | ⛏ ${depth} km`,
-
                 mag: String(mag),
                 lat: String(lat),
                 lon: String(lon),
                 depth: String(depth),
                 distance: String(distance),
-                source,
-                open_alarm: openAlarm
+                source: source,
+                open_alarm: openAlarmFlag
             },
-
             android: { priority: "high" }
         });
     });
 
-    // ======================
-    // 🚀 BATCH
-    // ======================
+    // ==========================================
+    // 🚀 BATCH GÖNDERİM (GÜVENLİ ÇIKIŞ)
+    // ==========================================
+    if (messages.length === 0) {
+        console.log("ℹ️ Kriterlere uyan kullanıcı bulunamadı.");
+        return;
+    }
+
     for (let i = 0; i < messages.length; i += 500) {
-
         const batch = messages.slice(i, i + 500);
-
         try {
             const res = await admin.messaging().sendEach(batch);
-
+            
+            // Hatalı tokenları temizleme süreci
             const invalidTokens = [];
-
-            res.responses.forEach((r, i) => {
+            res.responses.forEach((r, idx) => {
                 if (!r.success) {
                     const err = r.error?.code;
-
-                    if (
-                        err === "messaging/registration-token-not-registered" ||
-                        err === "messaging/invalid-registration-token"
-                    ) {
-                        invalidTokens.push(batch[i].token);
+                    if (err === "messaging/registration-token-not-registered" || 
+                        err === "messaging/invalid-registration-token") {
+                        invalidTokens.push(batch[idx].token);
                     }
                 }
             });
-
-            await cleanInvalidTokens(invalidTokens);
-
-            console.log(`✅ ${res.successCount} gönderildi`);
-
+            if (invalidTokens.length > 0) await cleanInvalidTokens(invalidTokens);
+            
+            console.log(`✅ ${res.successCount} adet bireysel bildirim gönderildi.`);
         } catch (e) {
-            console.error("❌ FCM:", e.message);
+            console.error("❌ FCM Batch Hatası:", e.message);
         }
     }
 }
@@ -269,27 +264,22 @@ async function checkEarthquakes() {
         console.log("📡 Kandilli:", kandilliList.length);
 
         // 🌍 USGS
-        for (const eq of usgsList) {
-
-            const mag = Number(eq.properties.mag || 0);
-            if (mag < 2) continue;
-            if (!eq.id) continue;
-
-            const uniqueId = `${mag}_${lat.toFixed(2)}_${lon.toFixed(2)}`;
-const id = uniqueId;
-
-            const sent = await checkAndMarkSent(id, mag);
-
-            if (!sent) {
-                await sendNotification({
-                    ...eq,
-                    properties: {
-                        ...eq.properties,
-                        source: "usgs"
-                    }
-                });
-            }
-        }
+      for (const eq of usgsList) {
+    const [lon, lat, depthRaw] = eq.geometry.coordinates; // 🔥 BU SATIRI EKLE
+    const mag = Number(eq.properties.mag || 0);
+    
+    // uniqueId kısmını da buna göre güncelle:
+    const id = `usgs_${eq.id}`; // Daha güvenli bir ID
+    const sent = await checkAndMarkSent(id, mag);
+    
+    if (!sent) {
+        await sendNotification({
+            ...eq,
+            geometry: { coordinates: [lon, lat, depthRaw] }, // Veriyi doğru paketle
+            properties: { ...eq.properties, source: "usgs" }
+        });
+    }
+}
 
         // 🇹🇷 KANDİLLİ
         for (const eq of kandilliList) {
