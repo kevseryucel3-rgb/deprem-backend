@@ -33,7 +33,7 @@ const db = admin.firestore();
 // ======================
 let isProcessing = false;
 let lastRun = 0;
-
+let sentCache = new Set();
 // ======================
 // 📏 MESAFE
 // ======================
@@ -308,11 +308,15 @@ async function checkEarthquakes() {
     const mag = Number(eq.properties.mag || 0);
     const time = eq.properties.time || Date.now();
     // uniqueId kısmını da buna göre güncelle:
-    const id = generateUniversalId(lat, lon, mag, time); // Daha güvenli bir ID
-    const sent = await checkAndMarkSent(id, mag);
-    
-    if (!sent) {
-        await sendNotification({
+   const id = generateUniversalId(lat, lon, mag, time);
+
+// 🔥 CACHE KONTROL (İLK FİLTRE)
+if (sentCache.has(id)) continue;
+
+const sent = await checkAndMarkSent(id, mag);
+
+if (!sent) {
+    sentCache.add(id);
             ...eq,
             geometry: { coordinates: [lon, lat, depthRaw] }, // Veriyi doğru paketle
             properties: { ...eq.properties, source: "usgs" }
@@ -334,11 +338,15 @@ const time = new Date(eq.date || Date.now()).getTime();
 
                 if (!lat || !lon) continue;
 
-                const id = generateUniversalId(lat, lon, mag, time);
+            const id = generateUniversalId(lat, lon, mag, time);
 
-                const sent = await checkAndMarkSent(id, mag);
+// 🔥 CACHE KONTROL
+if (sentCache.has(id)) continue;
 
-                if (!sent) {
+const sent = await checkAndMarkSent(id, mag);
+
+if (!sent) {
+    sentCache.add(id);
                     console.log("🇹🇷 KANDİLLİ:", mag, eq.title);
 
                     await sendNotification({
@@ -361,7 +369,7 @@ const time = new Date(eq.date || Date.now()).getTime();
     } catch (e) {
         console.error("❌ HATA:", e.message);
     }
-
+sentCache.clear();
     isProcessing = false;
 }
 // ======================
