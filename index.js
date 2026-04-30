@@ -53,12 +53,12 @@ function getDistance(lat1, lon1, lat2, lon2) {
 function generateUniversalId(lat, lon, mag, time) {
     const latFixed = Number(lat).toFixed(1);
     const lonFixed = Number(lon).toFixed(1);
-    const magFixed = Math.round(Number(mag));
+    
+    // Dakika bazlı zaman dilimi (2 dakikalık pencereler oluşturur)
+    const timeBucket = Math.floor(Number(time) / (1000 * 60 * 2)); 
 
-    // 🔥 ARTIK Date.now() YOK → depremin kendi zamanı kullanılıyor
-    const timeBucket = Math.floor(Number(time) / 60000); // dakika bazlı
-
-    return `${latFixed}_${lonFixed}_${magFixed}_${timeBucket}`;
+    // ID içinde artık 'mag' yok, böylece revizelerde yeni bildirim gitmez
+    return `eq_${latFixed}_${lonFixed}_${timeBucket}`;
 }
 
 // ======================
@@ -280,8 +280,11 @@ const maxDist = Number(user.maxDist || 500);
 // 🔍 LOOP
 // ======================
 async function checkEarthquakes() {
+    // Hafıza şişmesini önlemek için cache çok büyürse temizle (Örn: 500 kayıtta bir)
+    if (sentCache.size > 500) sentCache.clear();
 
     if (Date.now() - lastRun < 15000) return;
+    // ... geri kalan kodlar
     if (isProcessing) return;
 
     lastRun = Date.now();
@@ -374,9 +377,7 @@ if (!sent) {
 isProcessing = false;
 
 // 🔥 en sona bırak
-setTimeout(() => {
-    sentCache.clear();
-}, 10000); // 10 saniye cache tut
+
 }
 // ======================
 cron.schedule("*/30 * * * * *", checkEarthquakes);
