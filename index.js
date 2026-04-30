@@ -50,16 +50,6 @@ function getDistance(lat1, lon1, lat2, lon2) {
 
     return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 }
-function generateUniversalId(lat, lon, mag, time) {
-    const latFixed = Number(lat).toFixed(1);
-    const lonFixed = Number(lon).toFixed(1);
-    const magFixed = Math.round(Number(mag));
-
-    // 🔥 ARTIK Date.now() YOK → depremin kendi zamanı kullanılıyor
-    const timeBucket = Math.floor(Number(time) / 60000); // dakika bazlı
-
-    return `${latFixed}_${lonFixed}_${magFixed}_${timeBucket}`;
-}
 
 // ======================
 // 🔒 DUPLICATE CONTROL
@@ -122,9 +112,9 @@ async function sendNotification(eq) {
     console.log(`📨 İşlem Başladı: ${source} | Şiddet: ${mag} | Yer: ${place}`);
 
     // ==========================================
-    // 🌍 KURAL 1: GLOBAL BÜYÜK DEPREM (5.5+)
+    // 🌍 KURAL 1: GLOBAL BÜYÜK DEPREM (3.0+)
     // ==========================================
-    if (mag >= 5.5) {
+    if (mag >= 3.0) {
         try {
             await admin.messaging().send({
                 topic: "global",
@@ -140,12 +130,12 @@ async function sendNotification(eq) {
                 },
                 android: { priority: "high" }
             });
-            console.log("✅ Global (5.5+) mesajı iletildi.");
+            console.log("✅ Global (3.0+) mesajı iletildi.");
         } catch (e) {
             console.error("❌ Global gönderim hatası:", e.message);
         }
         // 🔥 VERİ KORUMA: Buradaki 'return' silindi. 
-        // Böylece Kandilli depremi 5.5+ olsa bile aşağıdaki bireysel mesafe kontrolü çalışacak.
+        // Böylece Kandilli depremi 3.0+ olsa bile aşağıdaki bireysel mesafe kontrolü çalışacak.
     }
 
     // ==========================================
@@ -157,7 +147,11 @@ async function sendNotification(eq) {
     snapshot.forEach(doc => {
         const user = doc.data();
         if (!user.token) return;
-
+// 🔕 KULLANICI BİLDİRİMİ KAPATTIYSA → TAMAMEN DUR
+if (user.notificationsEnabled === false) {
+    console.log("🔕 Bildirim kapalı kullanıcı → skip");
+    return;
+}
         const userLat = Number(user.lat);
         const userLon = Number(user.lon);
         if (!userLat || !userLon) return;
@@ -174,6 +168,7 @@ async function sendNotification(eq) {
 
         let canSend = false;
         let openAlarmFlag = "false";
+const alarmEnabled = user.alarmEnabled !== false; // default true
 
         // ==========================================
         // 🛡️ KURAL KORUMA: Premium vs Ücretsiz Ayrımı
@@ -182,20 +177,26 @@ async function sendNotification(eq) {
          const minMag = Number(user.minMag || 1);
 const maxDist = Number(user.maxDist || 500);
 
-            // 🔥 KURAL: 5.5 üzeriyse mesafe bakmaksızın ÇAL 
+            // 🔥 KURAL: 3.0 üzeriyse mesafe bakmaksızın ÇAL 
             // VEYA kullanıcının kendi belirlediği limitler tutuyorsa ÇAL
-            if (mag >= 5.5 || (mag >= minMag && distance <= maxDist)) {
-                canSend = true;
-                openAlarmFlag = "true"; 
-            }
+           if (mag >= minMag && distance <= maxDist) {
+    canSend = true;
+
+    // 🚨 ALARM SADECE BÜYÜK DEPREM + KULLANICI AÇIKSA
+    if (mag >= 3.0 && alarmEnabled) {
+        openAlarmFlag = "true";
+    }
+}
         } else {
             // 🔥 KURAL GÜNCELLEMESİ: 2.0 üzeri depremler kayan bildirim olarak gitmeli.
             // Ücretsiz kullanıcılar için 2.0+ ve 1200km sınırı (Flutter tarafındaki hard limit ile uyumlu)
             if (mag >= 2.0 && distance <= 1200) {
-                canSend = true;
-                openAlarmFlag = "false"; 
-            }
-        }
+    canSend = true;
+
+    // ❌ FREE USER ALARM YOK
+    openAlarmFlag = "false";
+}
+     
 
         if (!canSend) return;
 
@@ -306,9 +307,9 @@ async function checkEarthquakes() {
       for (const eq of usgsList) {
     const [lon, lat, depthRaw] = eq.geometry.coordinates; // 🔥 BU SATIRI EKLE
     const mag = Number(eq.properties.mag || 0);
-    const time = eq.properties.time || Date.now();
+    
     // uniqueId kısmını da buna göre güncelle:
-    const id = generateUniversalId(lat, lon, mag, time); // Daha güvenli bir ID
+    const id = `usgs_${eq.id}`; // Daha güvenli bir ID
     const sent = await checkAndMarkSent(id, mag);
     
     if (!sent) {
@@ -330,11 +331,10 @@ async function checkEarthquakes() {
                 const lat = Number(eq.geojson?.coordinates?.[1] || eq.lat);
                 const lon = Number(eq.geojson?.coordinates?.[0] || eq.lng);
                 const depth = Number(eq.depth || 0);
-const time = new Date(eq.date || Date.now()).getTime();
 
                 if (!lat || !lon) continue;
 
-                const id = generateUniversalId(lat, lon, mag, time);
+                const id = `kandilli_${lat}_${lon}_${mag}`;
 
                 const sent = await checkAndMarkSent(id, mag);
 
