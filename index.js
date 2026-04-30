@@ -196,6 +196,7 @@ const maxDist = Number(user.maxDist || 500);
     // ❌ FREE USER ALARM YOK
     openAlarmFlag = "false";
 }
+}
      
 
         if (!canSend) return;
