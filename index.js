@@ -50,6 +50,16 @@ function getDistance(lat1, lon1, lat2, lon2) {
 
     return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 }
+function generateUniversalId(lat, lon, mag, time) {
+    const latFixed = Number(lat).toFixed(1);
+    const lonFixed = Number(lon).toFixed(1);
+    const magFixed = Math.round(Number(mag));
+
+    // 🔥 ARTIK Date.now() YOK → depremin kendi zamanı kullanılıyor
+    const timeBucket = Math.floor(Number(time) / 60000); // dakika bazlı
+
+    return `${latFixed}_${lonFixed}_${magFixed}_${timeBucket}`;
+}
 
 // ======================
 // 🔒 DUPLICATE CONTROL
@@ -296,9 +306,9 @@ async function checkEarthquakes() {
       for (const eq of usgsList) {
     const [lon, lat, depthRaw] = eq.geometry.coordinates; // 🔥 BU SATIRI EKLE
     const mag = Number(eq.properties.mag || 0);
-    
+    const time = eq.properties.time || Date.now();
     // uniqueId kısmını da buna göre güncelle:
-    const id = `usgs_${eq.id}`; // Daha güvenli bir ID
+    const id = generateUniversalId(lat, lon, mag, time); // Daha güvenli bir ID
     const sent = await checkAndMarkSent(id, mag);
     
     if (!sent) {
@@ -320,10 +330,11 @@ async function checkEarthquakes() {
                 const lat = Number(eq.geojson?.coordinates?.[1] || eq.lat);
                 const lon = Number(eq.geojson?.coordinates?.[0] || eq.lng);
                 const depth = Number(eq.depth || 0);
+const time = new Date(eq.date || Date.now()).getTime();
 
                 if (!lat || !lon) continue;
 
-                const id = `kandilli_${lat}_${lon}_${mag}`;
+                const id = generateUniversalId(lat, lon, mag, time);
 
                 const sent = await checkAndMarkSent(id, mag);
 
