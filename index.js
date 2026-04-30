@@ -50,6 +50,17 @@ function getDistance(lat1, lon1, lat2, lon2) {
 
     return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 }
+function generateUniversalId(lat, lon, mag) {
+    const latFixed = Number(lat).toFixed(1);
+    const lonFixed = Number(lon).toFixed(1);
+    const magFixed = Math.round(Number(mag));
+
+    // 🔥 YENİ EKLENEN SATIR
+    const timeBucket = Math.floor(Date.now() / 60000); // 1 dakika
+
+    // 🔥 RETURN SATIRINI DEĞİŞTİR
+    return `${latFixed}_${lonFixed}_${magFixed}_${timeBucket}`;
+}
 
 // ======================
 // 🔒 DUPLICATE CONTROL
@@ -298,7 +309,7 @@ async function checkEarthquakes() {
     const mag = Number(eq.properties.mag || 0);
     
     // uniqueId kısmını da buna göre güncelle:
-    const id = `usgs_${eq.id}`; // Daha güvenli bir ID
+    const id = generateUniversalId(lat, lon, mag); // Daha güvenli bir ID
     const sent = await checkAndMarkSent(id, mag);
     
     if (!sent) {
@@ -323,7 +334,7 @@ async function checkEarthquakes() {
 
                 if (!lat || !lon) continue;
 
-                const id = `kandilli_${lat}_${lon}_${mag}`;
+                const id = generateUniversalId(lat, lon, mag);
 
                 const sent = await checkAndMarkSent(id, mag);
 
