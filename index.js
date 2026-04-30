@@ -51,13 +51,13 @@ function getDistance(lat1, lon1, lat2, lon2) {
     return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 }
 function generateUniversalId(lat, lon, mag, time) {
+    // 0.1 hassasiyet (yaklaşık 11km) benzer konumdaki depremleri eşleştirir
     const latFixed = Number(lat).toFixed(1);
     const lonFixed = Number(lon).toFixed(1);
     
-    // Dakika bazlı zaman dilimi (2 dakikalık pencereler oluşturur)
-    const timeBucket = Math.floor(Number(time) / (1000 * 60 * 2)); 
+    // Zamanı 3 dakikalık bloklara böl (Aynı deprem farklı servislerde 1-2 dk oynamış olabilir)
+    const timeBucket = Math.floor(Number(time) / (1000 * 60 * 3)); 
 
-    // ID içinde artık 'mag' yok, böylece revizelerde yeni bildirim gitmez
     return `eq_${latFixed}_${lonFixed}_${timeBucket}`;
 }
 
@@ -67,28 +67,35 @@ function generateUniversalId(lat, lon, mag, time) {
 async function checkAndMarkSent(id, mag) {
     const ref = db.collection("sent").doc(id);
 
-    return await db.runTransaction(async (tx) => {
-        const doc = await tx.get(ref);
+    try {
+        return await db.runTransaction(async (tx) => {
+            const doc = await tx.get(ref);
 
-        if (doc.exists) {
-            const oldMag = doc.data().mag || 0;
-            if (oldMag === mag) return true;
+            if (doc.exists) {
+                const oldMag = doc.data().mag || 0;
+                // Eğer yeni gelen büyüklük eskisinden büyük değilse, bunu "zaten gönderildi" say.
+                if (mag <= oldMag) {
+                    return true; // True = Gönderildi, bir daha gönderme.
+                }
+                // Eğer büyüklük arttıysa (revize), yeni büyüklüğü güncelle ve tekrar gönderilmesine izin ver.
+                tx.update(ref, {
+                    mag,
+                    time: admin.firestore.FieldValue.serverTimestamp()
+                });
+                return false; 
+            }
 
-            tx.update(ref, {
+            // İlk defa görülüyorsa kaydet ve gönderilmesine izin ver.
+            tx.set(ref, {
                 mag,
                 time: admin.firestore.FieldValue.serverTimestamp()
             });
-
-            return false;
-        }
-
-        tx.set(ref, {
-            mag,
-            time: admin.firestore.FieldValue.serverTimestamp()
+            return false; // False = Henüz gönderilmedi, gönder.
         });
-
-        return false;
-    });
+    } catch (e) {
+        console.error("❌ Transaction Hatası:", e.message);
+        return true; // Hata durumunda güvenli tarafta kalmak için gönderme.
+    }
 }
 
 // ======================
@@ -330,8 +337,56 @@ async function checkEarthquakes() {
 }
 
         // 🇹🇷 KANDİLLİ
-        for (const eq of kandilliList) {
+     // ======================
+// 🔍 LOOP
+// ======================
+async function checkEarthquakes() {
+    // Hafıza şişmesini önlemek için cache çok büyürse temizle
+    if (sentCache.size > 1000) sentCache.clear();
 
+    if (Date.now() - lastRun < 15000) return;
+    if (isProcessing) return;
+
+    lastRun = Date.now();
+    isProcessing = true;
+
+    try {
+        const [usgsRes, kandilliRes] = await Promise.all([
+            fetch("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson"),
+            fetch("https://api.orhanaydogdu.com.tr/deprem/kandilli/live")
+        ]);
+
+        const usgs = await usgsRes.json();
+        const kandilli = await kandilliRes.json();
+
+        const usgsList = usgs.features || [];
+        const kandilliList = kandilli.result || [];
+
+        console.log(`📡 Tarama Başladı: USGS(${usgsList.length}) | Kandilli(${kandilliList.length})`);
+
+        // 🌍 USGS İşleme
+        for (const eq of usgsList) {
+            const [lon, lat, depthRaw] = eq.geometry.coordinates;
+            const mag = Number(eq.properties.mag || 0);
+            const time = eq.properties.time || Date.now();
+
+            const id = generateUniversalId(lat, lon, mag, time);
+
+            if (sentCache.has(id)) continue;
+
+            const isAlreadySent = await checkAndMarkSent(id, mag);
+            if (!isAlreadySent) {
+                sentCache.add(id);
+                await sendNotification({
+                    ...eq,
+                    geometry: { coordinates: [lon, lat, depthRaw] },
+                    properties: { ...eq.properties, source: "usgs" }
+                });
+            }
+        }
+
+        // 🇹🇷 KANDİLLİ İşleme
+        for (const eq of kandilliList) {
             try {
                 const mag = parseFloat(eq.mag || eq.ml || eq.md);
                 if (isNaN(mag)) continue;
@@ -339,20 +394,21 @@ async function checkEarthquakes() {
                 const lat = Number(eq.geojson?.coordinates?.[1] || eq.lat);
                 const lon = Number(eq.geojson?.coordinates?.[0] || eq.lng);
                 const depth = Number(eq.depth || 0);
-const time = new Date(eq.date || Date.now()).getTime();
+                const time = new Date(eq.date || Date.now()).getTime();
 
                 if (!lat || !lon) continue;
 
-            const id = generateUniversalId(lat, lon, mag, time);
+                const id = generateUniversalId(lat, lon, mag, time);
 
-// 🔥 CACHE KONTROL
-if (sentCache.has(id)) continue;
+                // 🔥 1. KONTROL: RAM Cache (Hızlı)
+                if (sentCache.has(id)) continue;
 
-const sent = await checkAndMarkSent(id, mag);
+                // 🔥 2. KONTROL: Firestore (Kesin ve Revizyon Duyarlı)
+                const isAlreadySent = await checkAndMarkSent(id, mag);
 
-if (!sent) {
-    sentCache.add(id);
-                    console.log("🇹🇷 KANDİLLİ:", mag, eq.title);
+                if (!isAlreadySent) {
+                    sentCache.add(id);
+                    console.log(`✅ YENİ DEPREM: ${mag} - ${eq.title}`);
 
                     await sendNotification({
                         properties: {
@@ -365,19 +421,16 @@ if (!sent) {
                         }
                     });
                 }
-
             } catch (err) {
-                console.error("❌ KANDİLLİ HATA:", err.message);
+                console.error("❌ KANDİLLİ DÖNGÜ HATASI:", err.message);
             }
         }
 
     } catch (e) {
-        console.error("❌ HATA:", e.message);
+        console.error("❌ ANA HATA:", e.message);
+    } finally {
+        isProcessing = false;
     }
-isProcessing = false;
-
-// 🔥 en sona bırak
-
 }
 // ======================
 cron.schedule("*/30 * * * * *", checkEarthquakes);
