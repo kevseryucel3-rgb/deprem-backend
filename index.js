@@ -303,22 +303,24 @@ async function checkEarthquakes() {
         console.log("📡 Kandilli:", kandilliList.length);
 
         // 🌍 USGS
-      for (const eq of usgsList) {
-    const [lon, lat, depthRaw] = eq.geometry.coordinates; // 🔥 BU SATIRI EKLE
+    for (const eq of usgsList) {
+    const [lon, lat, depthRaw] = eq.geometry.coordinates;
     const mag = Number(eq.properties.mag || 0);
     const time = eq.properties.time || Date.now();
-    // uniqueId kısmını da buna göre güncelle:
-   const id = generateUniversalId(lat, lon, mag, time);
 
-// 🔥 CACHE KONTROL (İLK FİLTRE)
-if (sentCache.has(id)) continue;
+    const id = generateUniversalId(lat, lon, mag, time);
 
-const sent = await checkAndMarkSent(id, mag);
+    // 🔥 CACHE
+    if (sentCache.has(id)) continue;
 
-if (!sent) {
-    sentCache.add(id);
+    const sent = await checkAndMarkSent(id, mag);
+
+    if (!sent) {
+        sentCache.add(id);
+
+        await sendNotification({
             ...eq,
-            geometry: { coordinates: [lon, lat, depthRaw] }, // Veriyi doğru paketle
+            geometry: { coordinates: [lon, lat, depthRaw] },
             properties: { ...eq.properties, source: "usgs" }
         });
     }
@@ -369,8 +371,12 @@ if (!sent) {
     } catch (e) {
         console.error("❌ HATA:", e.message);
     }
-sentCache.clear();
-    isProcessing = false;
+isProcessing = false;
+
+// 🔥 en sona bırak
+setTimeout(() => {
+    sentCache.clear();
+}, 10000); // 10 saniye cache tut
 }
 // ======================
 cron.schedule("*/30 * * * * *", checkEarthquakes);
