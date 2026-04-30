@@ -179,13 +179,25 @@ const maxDist = Number(user.maxDist || 500);
 
             // 🔥 KURAL: 3.0 üzeriyse mesafe bakmaksızın ÇAL 
             // VEYA kullanıcının kendi belirlediği limitler tutuyorsa ÇAL
-           if (mag >= minMag && distance <= maxDist) {
-    canSend = true;
+const notifMinMag = Number(user.minMag || 1);
+const notifMaxDist = Number(user.maxDist || 500);
 
-    // 🚨 ALARM SADECE BÜYÜK DEPREM + KULLANICI AÇIKSA
-    if (mag >= 3.0 && alarmEnabled) {
-        openAlarmFlag = "true";
-    }
+const alarmMinMag = Number(user.alarmMag || 3);
+const alarmMaxDist = Number(user.alarmDist || 300);
+
+// 🔔 NOTIFICATION
+if (mag >= notifMinMag && distance <= notifMaxDist) {
+    canSend = true;
+}
+
+// 🚨 ALARM (AYRI KONTROL)
+if (
+    alarmEnabled &&
+    mag >= alarmMinMag &&
+    distance <= alarmMaxDist
+) {
+    canSend = true;
+    openAlarmFlag = "true";
 }
         } else {
             // 🔥 KURAL GÜNCELLEMESİ: 2.0 üzeri depremler kayan bildirim olarak gitmeli.
