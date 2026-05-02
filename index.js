@@ -395,7 +395,7 @@ for (const eq of kandilliList) {
 } finally {
     isProcessing = false; // 🔥 EN KRİTİK SATIR (SİSTEM KİLİTLENMESİN)
 }
-
+}
 // ======================
 cron.schedule("*/30 * * * * *", checkEarthquakes);
 
