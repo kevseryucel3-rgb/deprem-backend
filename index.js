@@ -241,7 +241,7 @@ if (user.isPremium === true) {
 const safePlace = place && place.length > 2 ? place : "Bilinmeyen konum";
 const safeDistance = distance || 0;
 const safeDepth = depth || 0;
-
+console.log("🚨 ALARM FLAG:", sendAlarmFlag, "MAG:", mag);
 messages.push({
     token: user.token,
 
