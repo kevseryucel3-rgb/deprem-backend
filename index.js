@@ -196,7 +196,7 @@ const alarmEnabled = user.alarmEnabled === true; // default true
         // ==========================================
 // 🛡️ KURAL KORUMA: Premium vs Ücretsiz Ayrımı
 // ==========================================
-if (user.isPremium === true) {
+if (true) {
 
     const notifMinMag = Number(user.minMag || 1);
     const notifMaxDist = Number(user.maxDist || 500);
