@@ -224,12 +224,9 @@ const safeDepth = depth || 0;
 messages.push({
     token: user.token,
 
-    notification: {
-        title: `${safeMag.toFixed(1)} Deprem`,
-        body: `${safePlace} • ${safeDistance} km • ${safeDepth} km`
-    },
-
     data: {
+        title: `${safeMag.toFixed(1)} Deprem`,
+        body: `${safePlace} • ${safeDistance} km • ${safeDepth} km`,
         place: safePlace,
         mag: String(safeMag),
         lat: String(lat),
@@ -241,13 +238,7 @@ messages.push({
     },
 
     android: { 
-        priority: "high",
-        notification: {
-            channelId: "earthquake_channel",
-            priority: "high",
-            sound: "default",
-            clickAction: "FLUTTER_NOTIFICATION_CLICK"
-        }
+        priority: "high"
     }
 });
 });
