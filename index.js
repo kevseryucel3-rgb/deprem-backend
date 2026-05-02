@@ -334,62 +334,68 @@ async function checkEarthquakes() {
     }
 }
 
-        // 🇹🇷 KANDİLLİ
-        for (const eq of kandilliList) {
+// 🇹🇷 KANDİLLİ
+// 🇹🇷 KANDİLLİ
+for (const eq of kandilliList) {
 
-            try {
-                const mag = parseFloat(eq.mag || eq.ml || eq.md);
-                if (isNaN(mag)) continue;
+    try {
+        const mag = parseFloat(eq.mag || eq.ml || eq.md);
+        if (isNaN(mag)) continue;
 
-                const lat = Number(eq.geojson?.coordinates?.[1] || eq.lat);
-                const lon = Number(eq.geojson?.coordinates?.[0] || eq.lng);
-                const depth = Number(eq.depth || 0);
+        const lat = Number(eq.geojson?.coordinates?.[1] || eq.lat);
+        const lon = Number(eq.geojson?.coordinates?.[0] || eq.lng);
+        const depth = Number(eq.depth || 0);
 
-                if (!lat || !lon) continue;
+        if (!lat || !lon) continue;
 
-                const id = `kandilli_${lat}_${lon}_${mag}`;
+        const id = `kandilli_${lat}_${lon}_${mag}`;
+        const sent = await checkAndMarkSent(id, mag);
 
-                const sent = await checkAndMarkSent(id, mag);
+        if (!sent) {
 
-if (!sent) {
-    console.log("🇹🇷 KANDİLLİ:", mag, eq.title);
+            console.log("🇹🇷 KANDİLLİ RAW:", eq.title);
 
-    // 🔥 PLACE TEMİZLEME (EN KRİTİK FIX)
-    let cleanPlace = eq.title || "Türkiye";
+            // 🔥 YERİ DOĞRU ÇEK
+            let cleanPlace = eq.title || eq.location || eq.region || "Türkiye";
 
-    // "ML 2.3 - EGE DENIZI" → "EGE DENIZI"
-    cleanPlace = cleanPlace
-        .replace(/^ML\s*\d+(\.\d+)?\s*-\s*/i, "")
-        .trim();
+            cleanPlace = cleanPlace
+                .replace(/^ML\s*\d+(\.\d+)?\s*-\s*/i, "")
+                .replace(/^\d+(\.\d+)?\s*-\s*/i, "")
+                .trim();
 
-    // 🔥 BOŞSA FALLBACK
-    if (!cleanPlace || cleanPlace.length < 3) {
-        cleanPlace = "Türkiye";
-    }
-
-    await sendNotification({
-        properties: {
-            mag: mag || 0,
-            place: cleanPlace,
-            source: "kandilli"
-        },
-        geometry: {
-            coordinates: [lon, lat, depth || 0]
-        }
-    });
-}
-
-            } catch (err) {
-                console.error("❌ KANDİLLİ HATA:", err.message);
+            // 🔥 BOŞSA fallback
+            if (!cleanPlace || cleanPlace.length < 3) {
+                cleanPlace = `${lat.toFixed(2)}, ${lon.toFixed(2)}`;
             }
+
+            console.log("📍 TEMİZLENMİŞ:", cleanPlace);
+
+            await sendNotification({
+                properties: {
+                    mag: mag,
+                    place: cleanPlace,
+                    source: "kandilli"
+                },
+                geometry: {
+                    coordinates: [lon, lat, depth]
+                }
+            });
         }
 
-    } catch (e) {
-        console.error("❌ HATA:", e.message);
+    } catch (err) {
+        console.error("❌ KANDİLLİ HATA:", err.message);
     }
-
-    isProcessing = false;
 }
+
+// ======================
+// 🔥 GLOBAL HATA KONTROLÜ + KİLİT AÇMA
+// ======================
+} catch (e) {
+    console.error("❌ GENEL HATA:", e.message);
+} finally {
+    isProcessing = false; // 🔥 EN KRİTİK SATIR (SİSTEM KİLİTLENMESİN)
+}
+
 // ======================
 cron.schedule("*/30 * * * * *", checkEarthquakes);
 
