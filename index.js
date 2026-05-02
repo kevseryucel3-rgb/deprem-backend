@@ -180,7 +180,7 @@ if (user.isPremium === true) {
     const notifMinMag = Number(user.minMag || 1);
     const notifMaxDist = Number(user.maxDist || 500);
 
-    const alarmMinMag = 2.5; // 🔥 SABİT KURAL
+    const alarmMinMag = 1.0; // 🔥 SABİT KURAL
     const alarmMaxDist = 15000; // 🔥 SABİT 1000 KM
     const alarmEnabled = user.alarmEnabled === true;
 
