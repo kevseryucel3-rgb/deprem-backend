@@ -114,7 +114,7 @@ async function sendNotification(eq) {
     // ==========================================
     // 🌍 KURAL 1: GLOBAL BÜYÜK DEPREM (3.0+)
     // ==========================================
-    if (mag >= 3.0) {
+    if (mag >= 5.5) {
         try {
             await admin.messaging().send({
                 topic: "global",
@@ -130,12 +130,12 @@ async function sendNotification(eq) {
                 },
                 android: { priority: "high" }
             });
-            console.log("✅ Global (3.0+) mesajı iletildi.");
+            console.log("✅ Global (5.5+) mesajı iletildi.");
         } catch (e) {
             console.error("❌ Global gönderim hatası:", e.message);
         }
         // 🔥 VERİ KORUMA: Buradaki 'return' silindi. 
-        // Böylece Kandilli depremi 3.0+ olsa bile aşağıdaki bireysel mesafe kontrolü çalışacak.
+        // Böylece Kandilli depremi 5.5+ olsa bile aşağıdaki bireysel mesafe kontrolü çalışacak.
     }
 
     // ==========================================
@@ -168,50 +168,48 @@ if (user.notificationsEnabled === false) {
 
         let canSend = false;
         let openAlarmFlag = "false";
-const alarmEnabled = user.alarmEnabled !== false; // default true
+let sendNotificationFlag = false;
+let sendAlarmFlag = false;
+const alarmEnabled = user.alarmEnabled === true; // default true
 
         // ==========================================
-        // 🛡️ KURAL KORUMA: Premium vs Ücretsiz Ayrımı
-        // ==========================================
-        if (user.isPremium === true) {
-         const minMag = Number(user.minMag || 1);
-const maxDist = Number(user.maxDist || 500);
+// 🛡️ KURAL KORUMA: Premium vs Ücretsiz Ayrımı
+// ==========================================
+if (user.isPremium === true) {
 
-            // 🔥 KURAL: 3.0 üzeriyse mesafe bakmaksızın ÇAL 
-            // VEYA kullanıcının kendi belirlediği limitler tutuyorsa ÇAL
-const notifMinMag = Number(user.minMag || 1);
-const notifMaxDist = Number(user.maxDist || 500);
+    const notifMinMag = Number(user.minMag || 1);
+    const notifMaxDist = Number(user.maxDist || 500);
 
-const alarmMinMag = Number(user.alarmMag || 3);
-const alarmMaxDist = Number(user.alarmDist || 300);
+    const alarmMinMag = 4.5; // 🔥 SABİT KURAL
+    const alarmMaxDist = 15000; // 🔥 SABİT 1000 KM
+    const alarmEnabled = user.alarmEnabled === true;
 
-// 🔔 NOTIFICATION
-if (mag >= notifMinMag && distance <= notifMaxDist) {
-    canSend = true;
-}
+    // 🔔 NOTIFICATION
+    if (mag >= notifMinMag && distance <= notifMaxDist) {
+        sendNotificationFlag = true;
+    }
 
-// 🚨 ALARM (AYRI KONTROL)
-if (
-    alarmEnabled &&
-    mag >= alarmMinMag &&
-    distance <= alarmMaxDist
-) {
-    canSend = true;
-    openAlarmFlag = "true";
-}
-        } else {
-            // 🔥 KURAL GÜNCELLEMESİ: 2.0 üzeri depremler kayan bildirim olarak gitmeli.
-            // Ücretsiz kullanıcılar için 2.0+ ve 1200km sınırı (Flutter tarafındaki hard limit ile uyumlu)
-            if (mag >= 2.0 && distance <= 1200) {
-    canSend = true;
+    // 🚨 ALARM (SADECE PREMIUM + 4.5+)
+    if (
+        alarmEnabled &&
+        mag >= alarmMinMag &&
+        distance <= alarmMaxDist
+    ) {
+        sendNotificationFlag = true;
+        sendAlarmFlag = true;
+    }
 
-    // ❌ FREE USER ALARM YOK
-    openAlarmFlag = "false";
-}
+} else {
+
+    // 🔔 FREE USER → sadece bildirim
+    if (mag >= 2.0 && distance <= 1200) {
+        sendNotificationFlag = true; // 🔥 KRİTİK FIX
+    }
+
 }
      
 
-        if (!canSend) return;
+        if (!sendNotificationFlag) return;
 
         // ==========================================
         // 🛡️ VERİ & BİLDİRİM KORUMA
@@ -219,10 +217,7 @@ if (
         messages.push({
             token: user.token,
             // 🔔 BİLDİRİM KORUMA: Kayan bildirim (Heads-up) için 'notification' şarttır.
-            notification: {
-                title: source === "kandilli" ? `🇹🇷 ${mag} Kandilli` : `🌍 ${mag} Deprem`,
-                body: `${place}\n📏 ${distance} km | ⛏ ${depth} km`,
-            },
+          
        data: {
     title: source === "kandilli"
         ? `${mag} Kandilli`
@@ -237,7 +232,7 @@ if (
     depth: String(depth),
     distance: String(distance),
     source: source,
-    open_alarm: openAlarmFlag
+    open_alarm: sendAlarmFlag ? "true" : "false"
 },
             android: { 
                 priority: "high",
