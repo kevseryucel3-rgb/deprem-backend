@@ -180,7 +180,7 @@ if (user.isPremium === true) {
     const notifMinMag = Number(user.minMag || 1);
     const notifMaxDist = Number(user.maxDist || 500);
 
-    const alarmMinMag = 4.5; // 🔥 SABİT KURAL
+    const alarmMinMag = 2.5; // 🔥 SABİT KURAL
     const alarmMaxDist = 15000; // 🔥 SABİT 1000 KM
     const alarmEnabled = user.alarmEnabled === true;
 
@@ -189,7 +189,7 @@ if (user.isPremium === true) {
         sendNotificationFlag = true;
     }
 
-    // 🚨 ALARM (SADECE PREMIUM + 4.5+)
+    // 🚨 ALARM (SADECE PREMIUM + 2.5+)
     if (
         alarmEnabled &&
         mag >= alarmMinMag &&
@@ -202,7 +202,7 @@ if (user.isPremium === true) {
 } else {
 
     // 🔔 FREE USER → sadece bildirim
-    if (mag >= 2.0 && distance <= 1200) {
+    if (mag >= 1.0 && distance <= 1200) {
         sendNotificationFlag = true; // 🔥 KRİTİK FIX
     }
 
