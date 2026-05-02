@@ -144,16 +144,37 @@ async function sendNotification(eq) {
     const snapshot = await db.collection("users").limit(2000).get();
     const messages = [];
 
-    snapshot.forEach(doc => {
-        const user = doc.data();
-        if (!user.token) return;
-// 🔕 KULLANICI BİLDİRİMİ KAPATTIYSA → TAMAMEN DUR
-if (user.notificationsEnabled === false) {
-    console.log("🔕 Bildirim kapalı kullanıcı → skip");
-    return;
-}
-        const userLat = Number(user.lat);
-        const userLon = Number(user.lon);
+snapshot.forEach(doc => {
+    const user = doc.data();
+
+    // 🔥 DEBUG → kullanıcıyı gör
+    console.log("👤 USER:", {
+        lat: user.lat,
+        lon: user.lon,
+        premium: user.isPremium,
+        alarm: user.alarmEnabled
+    });
+
+    // 🔥 TOKEN YOKSA
+    if (!user.token) {
+        console.log("❌ TOKEN YOK → SKIP");
+        return;
+    }
+
+    // 🔕 BİLDİRİM KAPALI
+    if (user.notificationsEnabled === false) {
+        console.log("🔕 Bildirim kapalı kullanıcı → skip");
+        return;
+    }
+
+    // 🔥 KONUM KONTROLÜ
+    if (!user.lat || !user.lon) {
+        console.log("❌ KONUM YOK → USER ELENDİ");
+        return;
+    }
+
+    const userLat = Number(user.lat);
+    const userLon = Number(user.lon);
         if (!userLat || !userLon) return;
 
         const distance = getDistance(userLat, userLon, lat, lon);
@@ -209,7 +230,7 @@ if (user.isPremium === true) {
 }
      
 
-        if (!sendNotificationFlag) return;
+        // if (!sendNotificationFlag) return;
 
         // ==========================================
         // 🛡️ VERİ & BİLDİRİM KORUMA
