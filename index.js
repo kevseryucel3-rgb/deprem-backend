@@ -214,38 +214,43 @@ if (user.isPremium === true) {
         // ==========================================
         // 🛡️ VERİ & BİLDİRİM KORUMA
         // ==========================================
-        messages.push({
-            token: user.token,
-            // 🔔 BİLDİRİM KORUMA: Kayan bildirim (Heads-up) için 'notification' şarttır.
-          
-       data: {
-    title: source === "kandilli"
-        ? `${mag} Kandilli`
-        : `${mag} Deprem`,
 
-    body: `${place} | ${distance} km | ${depth} km`,
+    // 🔥 EKLE → bu en kritik fix
+   const safeMag = isNaN(mag) ? 0 : mag;
+const safePlace = place && place.length > 2 ? place : "Bilinmeyen konum";
+const safeDistance = distance || 0;
+const safeDepth = depth || 0;
 
-    place: place,
-    mag: String(mag),
-    lat: String(lat),
-    lon: String(lon),
-    depth: String(depth),
-    distance: String(distance),
-    source: source,
-    open_alarm: sendAlarmFlag ? "true" : "false"
-},
-            android: { 
-                priority: "high",
-                // 🛡️ KOD KORUMA: Android özel bildirim kanalı ve yüksek öncelik
-                notification: {
-                    channelId: "earthquake_channel", // Flutter tarafındaki kanal ID ile aynı
-                    priority: "high", // Kayan bildirim için yüksek öncelik
-                    sound: "default",
-                    clickAction: "FLUTTER_NOTIFICATION_CLICK"
-                }
-            }
-        });
-    });
+messages.push({
+    token: user.token,
+
+    notification: {
+        title: `${safeMag.toFixed(1)} Deprem`,
+        body: `${safePlace} • ${safeDistance} km • ${safeDepth} km`
+    },
+
+    data: {
+        place: safePlace,
+        mag: String(safeMag),
+        lat: String(lat),
+        lon: String(lon),
+        depth: String(safeDepth),
+        distance: String(safeDistance),
+        source: source,
+        open_alarm: sendAlarmFlag ? "true" : "false"
+    },
+
+    android: { 
+        priority: "high",
+        notification: {
+            channelId: "earthquake_channel",
+            priority: "high",
+            sound: "default",
+            clickAction: "FLUTTER_NOTIFICATION_CLICK"
+        }
+    }
+});
+});
 
     // ==========================================
     // 🚀 BATCH GÖNDERİM (GÜVENLİ ÇIKIŞ)
@@ -346,20 +351,33 @@ async function checkEarthquakes() {
 
                 const sent = await checkAndMarkSent(id, mag);
 
-                if (!sent) {
-                    console.log("🇹🇷 KANDİLLİ:", mag, eq.title);
+if (!sent) {
+    console.log("🇹🇷 KANDİLLİ:", mag, eq.title);
 
-                    await sendNotification({
-                        properties: {
-                            mag,
-                            place: eq.title || "Türkiye",
-                            source: "kandilli"
-                        },
-                        geometry: {
-                            coordinates: [lon, lat, depth]
-                        }
-                    });
-                }
+    // 🔥 PLACE TEMİZLEME (EN KRİTİK FIX)
+    let cleanPlace = eq.title || "Türkiye";
+
+    // "ML 2.3 - EGE DENIZI" → "EGE DENIZI"
+    cleanPlace = cleanPlace
+        .replace(/^ML\s*\d+(\.\d+)?\s*-\s*/i, "")
+        .trim();
+
+    // 🔥 BOŞSA FALLBACK
+    if (!cleanPlace || cleanPlace.length < 3) {
+        cleanPlace = "Türkiye";
+    }
+
+    await sendNotification({
+        properties: {
+            mag: mag || 0,
+            place: cleanPlace,
+            source: "kandilli"
+        },
+        geometry: {
+            coordinates: [lon, lat, depth || 0]
+        }
+    });
+}
 
             } catch (err) {
                 console.error("❌ KANDİLLİ HATA:", err.message);
