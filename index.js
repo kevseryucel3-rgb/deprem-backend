@@ -196,13 +196,13 @@ const alarmEnabled = user.alarmEnabled === true; // default true
         // ==========================================
 // 🛡️ KURAL KORUMA: Premium vs Ücretsiz Ayrımı
 // ==========================================
-if (user.isPremium === true)
+if (user.isPremium === true) {
 
     const notifMinMag = Number(user.minMag || 1);
     const notifMaxDist = Number(user.maxDist || 500);
 
-    const alarmMinMag = 1.0; // 🔥 SABİT KURAL
-    const alarmMaxDist = 15000; // 🔥 SABİT 1000 KM
+    const alarmMinMag = 1.0;
+    const alarmMaxDist = 15000;
     const alarmEnabled = user.alarmEnabled === true;
 
     // 🔔 NOTIFICATION
@@ -210,36 +210,30 @@ if (user.isPremium === true)
         sendNotificationFlag = true;
     }
 
-  // 🌍 KONUM KONTROLÜ
-const isTR =
-    lat >= 34 && lat <= 44 &&
-    lon >= 24 && lon <= 47;
+    // 🌍 KONUM KONTROLÜ
+    const isTR =
+        lat >= 34 && lat <= 44 &&
+        lon >= 24 && lon <= 47;
 
-const isNearby = distance <= 300; // 🔥 300 km yakın
-const isBigGlobal = mag >= 6.5;   // 🔥 büyük deprem
+    const isNearby = distance <= 300;
+    const isBigGlobal = mag >= 6.5;
 
-// 🚨 AKILLI ALARM SİSTEMİ
-if (
-    alarmEnabled &&
-    (
-        isTR ||          // 🇹🇷 Türkiye
-        isNearby ||      // 📍 yakın
-        isBigGlobal      // 🌍 büyük global
-    )
-) {
-    sendNotificationFlag = true;
-    sendAlarmFlag = true;
-}
+    // 🚨 ALARM
+    if (
+        alarmEnabled &&
+        (isTR || isNearby || isBigGlobal)
+    ) {
+        sendNotificationFlag = true;
+        sendAlarmFlag = true;
+    }
 
 } else {
 
-    // 🔔 FREE USER → sadece bildirim
     if (mag >= 1.0 && distance <= 1200) {
-        sendNotificationFlag = true; // 🔥 KRİTİK FIX
+        sendNotificationFlag = true;
     }
 
-}
-     
+}  
 
         if (!sendNotificationFlag) return;
 
