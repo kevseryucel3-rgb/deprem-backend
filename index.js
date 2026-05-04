@@ -215,7 +215,7 @@ if (user.isPremium === true) {
         lat >= 34 && lat <= 44 &&
         lon >= 24 && lon <= 47;
 
-    const isNearby = distance <= 300;
+    const isNearby = distance <= 600;
     const isBigGlobal = mag >= 6.5;
 
     // 🚨 ALARM
@@ -229,7 +229,7 @@ if (user.isPremium === true) {
 
 } else {
 
-    if (mag >= 1.0 && distance <= 1200) {
+    if (mag >= 2.0 && distance <= 1200) {
         sendNotificationFlag = true;
     }
 
