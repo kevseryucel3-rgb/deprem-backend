@@ -151,7 +151,7 @@ snapshot.forEach(doc => {
     console.log("👤 USER:", {
         lat: user.lat,
         lon: user.lon,
-        premium: user.isPremium,
+        premiumUntil: user.premiumUntil,
         alarm: user.alarmEnabled
     });
 
@@ -193,10 +193,23 @@ let sendNotificationFlag = false;
 let sendAlarmFlag = false;
 const alarmEnabled = user.alarmEnabled === true; // default true
 
-        // ==========================================
+// ==========================================
 // 🛡️ KURAL KORUMA: Premium vs Ücretsiz Ayrımı
 // ==========================================
-if (user.isPremium === true) {
+
+// 🔥 YENİ PREMIUM KONTROLÜ
+let isPremium = false;
+
+if (user.premiumUntil) {
+    try {
+        const until = user.premiumUntil.toDate();
+        isPremium = until > new Date();
+    } catch (e) {
+        console.log("⚠️ premiumUntil parse hatası:", e.message);
+    }
+}
+
+if (isPremium) {
 
     const notifMinMag = Number(user.minMag || 1);
     const notifMaxDist = Number(user.maxDist || 500);
@@ -229,11 +242,12 @@ if (user.isPremium === true) {
 
 } else {
 
+    // 🆓 FREE USER
     if (mag >= 2.0 && distance <= 1200) {
         sendNotificationFlag = true;
     }
 
-}  
+}
 
         if (!sendNotificationFlag) return;
 
