@@ -180,7 +180,7 @@ snapshot.forEach(doc => {
         user.minMag,
 
     maxDist:
-        user.maxDist
+        user.maxDist,
 alarmMag:
     user.alarmMag,
 
@@ -195,17 +195,8 @@ alarmDist:
         return;
     }
 
-    // 🔕 BİLDİRİM KAPALI
-if (user.notificationsEnabled !== true) {
+ const notificationsEnabled = user.notificationsEnabled === true;
 
-    console.log("🪦 PASİF USER:", doc.id);
-
-    console.log(
-        "🔕 Bildirim kapalı kullanıcı → skip"
-    );
-
-    return;
-}
 
     // 🔥 KONUM KONTROLÜ
     if (!user.lat || !user.lon) {
@@ -233,7 +224,6 @@ if (user.notificationsEnabled !== true) {
        
 let sendNotificationFlag = false;
 let sendAlarmFlag = false;
-const alarmEnabled = user.alarmEnabled !== false; // default true
 
 // ==========================================
 // 🛡️ KURAL KORUMA: Premium vs Ücretsiz Ayrımı
@@ -275,15 +265,15 @@ const alarmEnabled = user.alarmEnabled === true;
     const isBigGlobal = mag >= 6.5;
 
     // 🚨 ALARM
-   if (
+if (
     alarmEnabled &&
     mag >= alarmMinMag &&
-    distance <= alarmMaxDist &&
-    (isTR || isNearby || isBigGlobal)
+    distance <= alarmMaxDist
 ) {
     sendNotificationFlag = true;
     sendAlarmFlag = true;
 }
+
 
 } else {
 
