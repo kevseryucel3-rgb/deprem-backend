@@ -141,7 +141,10 @@ async function sendNotification(eq) {
     // ==========================================
     // 📍 KURAL 2: KİŞİSELLEŞTİRİLMİŞ FİLTRELEME
     // ==========================================
-    const snapshot = await db.collection("users").limit(2000).get();
+   const snapshot = await db.collection("users")
+    .where("notificationsEnabled", "==", true)
+    .limit(2000)
+    .get();
     const messages = [];
 
 snapshot.forEach(doc => {
@@ -175,10 +178,16 @@ snapshot.forEach(doc => {
     }
 
     // 🔕 BİLDİRİM KAPALI
-    if (user.notificationsEnabled === false) {
-        console.log("🔕 Bildirim kapalı kullanıcı → skip");
-        return;
-    }
+if (user.notificationsEnabled !== true) {
+
+    console.log("🪦 PASİF USER:", doc.id);
+
+    console.log(
+        "🔕 Bildirim kapalı kullanıcı → skip"
+    );
+
+    return;
+}
 
     // 🔥 KONUM KONTROLÜ
     if (!user.lat || !user.lon) {
@@ -203,8 +212,7 @@ snapshot.forEach(doc => {
             if (!isTR) return;
         }
 
-        let canSend = false;
-        let openAlarmFlag = "false";
+       
 let sendNotificationFlag = false;
 let sendAlarmFlag = false;
 const alarmEnabled = user.alarmEnabled !== false; // default true
@@ -249,9 +257,10 @@ if (isPremium) {
 
     // 🚨 ALARM
     if (
-        alarmEnabled &&
-        (isTR || isNearby || isBigGlobal)
-    ) {
+    alarmEnabled &&
+    mag >= alarmMinMag &&
+    (isTR || isNearby || isBigGlobal)
+) {
         sendNotificationFlag = true;
         sendAlarmFlag = true;
     }
