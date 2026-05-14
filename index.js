@@ -154,9 +154,9 @@ async function sendNotification(eq) {
     // 📍 KURAL 2: KİŞİSELLEŞTİRİLMİŞ FİLTRELEME
     // ==========================================
    const snapshot = await db.collection("users")
-    .where("notificationsEnabled", "==", true)
     .limit(2000)
     .get();
+
     const messages = [];
 
 snapshot.forEach(doc => {
@@ -181,6 +181,12 @@ snapshot.forEach(doc => {
 
     maxDist:
         user.maxDist
+alarmMag:
+    user.alarmMag,
+
+alarmDist:
+    user.alarmDist
+
 });
 
     // 🔥 TOKEN YOKSA
@@ -250,9 +256,10 @@ if (isPremium) {
     const notifMinMag = Number(user.minMag || 1);
     const notifMaxDist = Number(user.maxDist || 500);
 
-    const alarmMinMag = 1.0;
-    const alarmMaxDist = 15000;
-    const alarmEnabled = user.alarmEnabled !== false;
+const alarmMinMag = Number(user.alarmMag ?? 4.5);
+const alarmMaxDist = Number(user.alarmDist ?? 15000);
+const alarmEnabled = user.alarmEnabled === true;
+
 
     // 🔔 NOTIFICATION
     if (mag >= notifMinMag && distance <= notifMaxDist) {
@@ -268,14 +275,15 @@ if (isPremium) {
     const isBigGlobal = mag >= 6.5;
 
     // 🚨 ALARM
-    if (
+   if (
     alarmEnabled &&
     mag >= alarmMinMag &&
+    distance <= alarmMaxDist &&
     (isTR || isNearby || isBigGlobal)
 ) {
-        sendNotificationFlag = true;
-        sendAlarmFlag = true;
-    }
+    sendNotificationFlag = true;
+    sendAlarmFlag = true;
+}
 
 } else {
 
