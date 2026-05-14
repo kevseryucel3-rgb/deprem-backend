@@ -93,10 +93,22 @@ async function cleanInvalidTokens(tokens) {
         .where("token", "in", chunk)
         .get();
 
-    const batch = db.batch();
-    snap.forEach(doc => batch.delete(doc.ref));
-    await batch.commit();
-}
+const batch = db.batch();
+
+snap.forEach(doc => {
+
+    batch.update(doc.ref, {
+
+        token: admin.firestore.FieldValue.delete(),
+
+        updatedAt:
+            admin.firestore.FieldValue.serverTimestamp()
+
+    });
+
+});
+
+await batch.commit();
 
 // ======================
 // 🔔 NOTIFICATION
