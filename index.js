@@ -148,12 +148,25 @@ snapshot.forEach(doc => {
     const user = doc.data();
 
     // 🔥 DEBUG → kullanıcıyı gör
-    console.log("👤 USER:", {
-        lat: user.lat,
-        lon: user.lon,
-        premiumUntil: user.premiumUntil,
-        alarm: user.alarmEnabled
-    });
+  console.log("👤 USER:", {
+    lat: user.lat,
+    lon: user.lon,
+
+    notificationsEnabled:
+        user.notificationsEnabled,
+
+    alarmEnabled:
+        user.alarmEnabled,
+
+    premiumUntil:
+        user.premiumUntil,
+
+    minMag:
+        user.minMag,
+
+    maxDist:
+        user.maxDist
+});
 
     // 🔥 TOKEN YOKSA
     if (!user.token) {
@@ -175,7 +188,10 @@ snapshot.forEach(doc => {
 
     const userLat = Number(user.lat);
     const userLon = Number(user.lon);
-        if (!userLat || !userLon) return;
+       if (isNaN(userLat) || isNaN(userLon)) {
+    console.log("❌ GEÇERSİZ KONUM");
+    return;
+}
 
         const distance = getDistance(userLat, userLon, lat, lon);
 
@@ -191,7 +207,7 @@ snapshot.forEach(doc => {
         let openAlarmFlag = "false";
 let sendNotificationFlag = false;
 let sendAlarmFlag = false;
-const alarmEnabled = user.alarmEnabled === true; // default true
+const alarmEnabled = user.alarmEnabled !== false; // default true
 
 // ==========================================
 // 🛡️ KURAL KORUMA: Premium vs Ücretsiz Ayrımı
@@ -216,7 +232,7 @@ if (isPremium) {
 
     const alarmMinMag = 1.0;
     const alarmMaxDist = 15000;
-    const alarmEnabled = user.alarmEnabled === true;
+    const alarmEnabled = user.alarmEnabled !== false;
 
     // 🔔 NOTIFICATION
     if (mag >= notifMinMag && distance <= notifMaxDist) {
