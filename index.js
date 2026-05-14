@@ -109,7 +109,7 @@ snap.forEach(doc => {
 });
 
 await batch.commit();
-
+}
 // ======================
 // 🔔 NOTIFICATION
 // ======================
