@@ -120,6 +120,12 @@ async function sendNotification(eq) {
 
     const [lon, lat, depthRaw] = eq.geometry.coordinates;
     const depth = Math.round(depthRaw || 0);
+const quakeTime =
+    eq.properties.time ||
+    eq.properties.timestamp ||
+    eq.properties.date ||
+    eq.properties.created_at ||
+    Date.now();
 
     console.log(`📨 İşlem Başladı: ${source} | Şiddet: ${mag} | Yer: ${place}`);
 
@@ -281,18 +287,19 @@ console.log("🚨 ALARM FLAG:", sendAlarmFlag, "MAG:", mag);
 messages.push({
     token: user.token,
 
-    data: {
-        title: `${safeMag.toFixed(1)} Deprem`,
-        body: `${safePlace} • ${safeDistance} km • ${safeDepth} km`,
-        place: safePlace,
-        mag: String(safeMag),
-        lat: String(lat),
-        lon: String(lon),
-        depth: String(safeDepth),
-        distance: String(safeDistance),
-        source: source,
-        open_alarm: sendAlarmFlag ? "true" : "false"
-    },
+   data: {
+    title: `${safeMag.toFixed(1)} Deprem`,
+    body: `${safePlace} • ${safeDistance} km • ${safeDepth} km`,
+    place: safePlace,
+    mag: String(safeMag),
+    lat: String(lat),
+    lon: String(lon),
+    depth: String(safeDepth),
+    distance: String(safeDistance),
+    source: source,
+    time: String(quakeTime),
+    open_alarm: sendAlarmFlag ? "true" : "false"
+},
 
     android: { 
         priority: "high"
@@ -418,16 +425,17 @@ for (const eq of kandilliList) {
 
             console.log("📍 TEMİZLENMİŞ:", cleanPlace);
 
-            await sendNotification({
-                properties: {
-                    mag: mag,
-                    place: cleanPlace,
-                    source: "kandilli"
-                },
-                geometry: {
-                    coordinates: [lon, lat, depth]
-                }
-            });
+          await sendNotification({
+    properties: {
+        mag: mag,
+        place: cleanPlace,
+        source: "kandilli",
+        date: eq.date || eq.created_at || Date.now()
+    },
+    geometry: {
+        coordinates: [lon, lat, depth]
+    }
+});
         }
 
     } catch (err) {
@@ -468,18 +476,18 @@ app.get("/test", async (req, res) => {
             topic: "global",
             android: {
                 priority: "high"
-            },
-            data: {
-                id: "test_alarm_123", // 🔥 BU SATIRI EKLE (Eksik olan bu)
-                title: "🚨 TEST ALARMI",
-                body: "Bu bir simülasyon alarmıdır.",
-                mag: "6.0",
-                lat: "39.9",
-                lon: "32.8",
-                depth: "10",
-                open_alarm: "true", // Alarmı tetikler
-                source: "test"
-            }
+            },data: {
+    id: "test_alarm_123",
+    title: "🚨 TEST ALARMI",
+    body: "Bu bir simülasyon alarmıdır.",
+    mag: "6.0",
+    lat: "39.9",
+    lon: "32.8",
+    depth: "10",
+    time: String(Date.now()),
+    open_alarm: "true",
+    source: "test"
+}
         });
 
         console.log("✅ TEST ALARM GÖNDERİLDİ");
