@@ -126,29 +126,7 @@ async function sendNotification(eq) {
     // ==========================================
     // 🌍 KURAL 1: GLOBAL BÜYÜK DEPREM (3.0+)
     // ==========================================
-    if (mag >= 5.5) {
-        try {
-            await admin.messaging().send({
-                topic: "global",
-                data: {
-                    title: `🚨 ${mag} Büyük Deprem`,
-                    body: `${place} | ⛏ ${depth} km`,
-                    mag: String(mag),
-                    lat: String(lat),
-                    lon: String(lon),
-                    depth: String(depth),
-                    source: source,
-                    open_alarm: "false"
-                },
-                android: { priority: "high" }
-            });
-            console.log("✅ Global (5.5+) mesajı iletildi.");
-        } catch (e) {
-            console.error("❌ Global gönderim hatası:", e.message);
-        }
-        // 🔥 VERİ KORUMA: Buradaki 'return' silindi. 
-        // Böylece Kandilli depremi 5.5+ olsa bile aşağıdaki bireysel mesafe kontrolü çalışacak.
-    }
+ 
 
     // ==========================================
     // 📍 KURAL 2: KİŞİSELLEŞTİRİLMİŞ FİLTRELEME
@@ -194,6 +172,10 @@ alarmDist:
         console.log("❌ TOKEN YOK → SKIP");
         return;
     }
+if (user.notificationsEnabled !== true) {
+    console.log("🔕 Bildirim kapalı → SKIP");
+    return;
+}
 
  const notificationsEnabled = user.notificationsEnabled === true;
 
