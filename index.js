@@ -178,6 +178,7 @@ alarmDist:
         console.log("❌ TOKEN YOK → SKIP");
         return;
     }
+console.log("✅ TOKEN VAR:", doc.id);
 if (user.notificationsEnabled !== true) {
     console.log("🔕 Bildirim kapalı → SKIP");
     return;
@@ -228,7 +229,11 @@ if (user.premiumUntil) {
         console.log("⚠️ premiumUntil parse hatası:", e.message);
     }
 }
-
+console.log("💎 PREMIUM CHECK:", {
+    userId: doc.id,
+    isPremium,
+    premiumUntil: user.premiumUntil || null
+});
 if (isPremium) {
 
     const notifMinMag = Number(user.minMag || 1);
@@ -239,10 +244,23 @@ const alarmMaxDist = Number(user.alarmDist ?? 15000);
 const alarmEnabled = user.alarmEnabled === true;
 
 
-    // 🔔 NOTIFICATION
-    if (mag >= notifMinMag && distance <= notifMaxDist) {
-        sendNotificationFlag = true;
-    }
+ // 🔔 NOTIFICATION
+console.log("🔎 NOTIF CHECK:", {
+    userId: doc.id,
+    mag,
+    notifMinMag,
+    distance,
+    notifMaxDist,
+    passMag: mag >= notifMinMag,
+    passDist: distance <= notifMaxDist
+});
+
+if (mag >= notifMinMag && distance <= notifMaxDist) {
+    sendNotificationFlag = true;
+    console.log("✅ NOTIF UYGUN:", doc.id);
+} else {
+    console.log("❌ NOTIF UYGUN DEĞİL:", doc.id);
+}
 
     // 🌍 KONUM KONTROLÜ
     const isTR =
@@ -271,6 +289,12 @@ if (
     }
 
 }
+console.log("📌 FINAL USER DECISION:", {
+    userId: doc.id,
+    sendNotificationFlag,
+    sendAlarmFlag,
+    isPremium
+});
 
         if (!sendNotificationFlag) return;
 
@@ -471,9 +495,22 @@ app.get("/health", (req, res) => {
 app.get("/test", async (req, res) => {
     try {
         console.log("🧪 TEST ALARM GÖNDERİLİYOR...");
+const userSnap = await db.collection("users")
+    .where("notificationsEnabled", "==", true)
+    .limit(1)
+    .get();
 
+if (userSnap.empty) {
+    return res.send("Aktif kullanıcı bulunamadı");
+}
+
+const testUser = userSnap.docs[0].data();
+
+if (!testUser.token) {
+    return res.send("Test kullanıcısında token yok");
+}
         await admin.messaging().send({
-            topic: "global",
+            token: testUser.token,
             android: {
                 priority: "high"
             },data: {
