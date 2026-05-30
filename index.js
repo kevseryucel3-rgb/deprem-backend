@@ -137,7 +137,20 @@ const quakeTime =
     // ==========================================
     // 📍 KURAL 2: KİŞİSELLEŞTİRİLMİŞ FİLTRELEME
     // ==========================================
-   const snapshot = await db.collection("users")
+  const snapshot = await db.collection("users")
+    .where("pushActive", "==", true)
+    .select(
+        "token",
+        "lat",
+        "lon",
+        "notificationsEnabled",
+        "alarmEnabled",
+        "premiumUntil",
+        "minMag",
+        "maxDist",
+        "alarmMag",
+        "alarmDist"
+    )
     .limit(2000)
     .get();
 
@@ -179,12 +192,13 @@ alarmDist:
         return;
     }
 console.log("✅ TOKEN VAR:", doc.id);
-if (user.notificationsEnabled !== true) {
-    console.log("🔕 Bildirim kapalı → SKIP");
+const notificationsEnabled = user.notificationsEnabled === true;
+const alarmEnabledGlobal = user.alarmEnabled === true;
+
+if (!notificationsEnabled && !alarmEnabledGlobal) {
+    console.log("🔕 Bildirim ve alarm kapalı → SKIP");
     return;
 }
-
- const notificationsEnabled = user.notificationsEnabled === true;
 
 
     // 🔥 KONUM KONTROLÜ
@@ -477,7 +491,7 @@ for (const eq of kandilliList) {
 }
 }
 // ======================
-cron.schedule("*/30 * * * * *", checkEarthquakes);
+cron.schedule("*/45 * * * * *", checkEarthquakes);
 
 // ======================
 app.get("/", (req, res) => res.send("Deprem Servisi Aktif 🚀"));
