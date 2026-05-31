@@ -1,220 +1,305 @@
-# Privacy Policy for Deprem Takip
-
-**Last Updated: May 2026**
-
-## Introduction
-
-Deprem Takip ("the Application", "we", "our", or "us") is committed to protecting the privacy and security of its users. This Privacy Policy explains what information is collected, how it is used, stored, shared, and protected when you use the Deprem Takip mobile application.
-
-By using the Application, you agree to the collection and use of information in accordance with this Privacy Policy.
-
----
-
-## Information We Collect
-
-### Account Information
-
-When you create or use an account, we may collect:
-
-* Email address
-* User identifier
-* Authentication information provided through Firebase Authentication
-
-### Location Information
-
-The Application may request access to your device's location in order to:
-
-* Calculate the distance between your location and earthquake events
-* Provide location-based earthquake alerts
-* Improve the accuracy of earthquake notifications
-
-Location access is optional and is only used after explicit user permission has been granted.
-
-### Device Information
-
-We may collect certain technical information including:
-
-* Device model
-* Operating system version
-* Device language
-* Unique device identifiers
-* Application version
-* Mobile network information
-
-### Notification Information
-
-To provide earthquake alerts and notifications, we may collect:
-
-* Firebase Cloud Messaging (FCM) token
-* Notification preferences
-* Alert settings configured by the user
-
-### Advertising Information
-
-If advertisements are displayed within the Application, Google AdMob may collect:
-
-* Advertising identifiers
-* Device information
-* Advertising interaction data
-
-Such information may be used to display relevant advertisements and measure advertising performance.
-
-### Usage Data
-
-We may automatically collect information regarding:
-
-* Application usage
-* Features accessed
-* Error logs
-* Diagnostic information
-* Performance statistics
-
----
-
-## How We Use Your Information
-
-Collected information may be used for the following purposes:
-
-* Providing earthquake monitoring services
-* Sending earthquake alerts and emergency notifications
-* Calculating earthquake distance information
-* Managing user accounts
-* Improving application performance
-* Detecting and preventing abuse or misuse
-* Maintaining system security
-* Displaying advertisements
-* Complying with legal obligations
-* Providing technical support
-
----
-
-## Location Data Usage
-
-Location data is used solely for earthquake-related services.
-
-Specifically, location information may be used to:
-
-* Determine proximity to earthquake events
-* Trigger location-based alerts
-* Display earthquake distance calculations
-
-The Application does not continuously track users in the background beyond what is required for the functionality selected by the user.
-
-Users may disable location permissions at any time through device settings.
-
----
-
-## Third-Party Services
-
-The Application may use third-party services that collect information independently.
-
-These services include:
-
-### Firebase Authentication
-
-Used for user account authentication and management.
-
-### Firebase Firestore
-
-Used for securely storing application-related user data.
-
-### Firebase Cloud Messaging
-
-Used to deliver earthquake alerts and notifications.
-
-### Google AdMob
-
-Used to display advertisements within the Application.
-
-### Google Play Services
-
-Used to provide core Android functionality and improve application performance.
-
-Each third-party provider processes information according to its own privacy practices.
-
----
-
-## Data Sharing
-
-We do not sell user personal information.
-
-Information may only be shared in the following situations:
-
-* When required by law
-* To comply with legal obligations
-* To protect user safety
-* To protect the rights and security of the Application
-* With service providers necessary for Application functionality
-
----
-
-## Data Retention
-
-User information is retained only for as long as necessary to provide services, comply with legal obligations, resolve disputes, and enforce agreements.
-
-Retention periods may vary depending on the type of information involved.
-
----
-
-## Account Deletion
-
-Users may request deletion of their account through the Application.
-
-Upon account deletion:
-
-* Account information may be removed from our systems
-* Associated user data may be deleted or anonymized
-* Certain information may be retained if required by law or for legitimate security purposes
-
----
-
-## Data Security
-
-We implement reasonable technical and organizational measures designed to protect user information against:
-
-* Unauthorized access
-* Unauthorized disclosure
-* Loss of data
-* Misuse of information
-* Alteration of stored data
-
-While we strive to protect user information, no method of transmission or storage can be guaranteed to be completely secure.
-
----
-
-## Children's Privacy
-
-The Application is not intended for children under the age required by applicable laws.
-
-We do not knowingly collect personal information from children.
-
-If we become aware that personal information from a child has been collected without appropriate consent, reasonable steps will be taken to remove such information.
-
----
-
-## International Users
-
-Information may be processed and stored in countries where our service providers operate.
-
-By using the Application, users consent to such transfers where permitted by applicable law.
-
----
-
-## Changes to This Privacy Policy
-
-We reserve the right to update this Privacy Policy at any time.
-
-Changes will become effective when the updated policy is published.
-
-Users are encouraged to review this policy periodically.
-
----
-
-## Contact Information
-
-If you have questions regarding this Privacy Policy or your personal information, you may contact the application developer through the contact information provided within the Application or through the application's official store listing.
-
----
-
-**Deprem Takip**
-Earthquake Monitoring and Alert Application
+import os
+from weasyprint import HTML
+
+# Create the beautiful HTML structure for the Privacy Policy
+html_content = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Privacy Policy - Deprem Takip</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 20mm 15mm;
+            background-color: #fdfdfd;
+            @bottom-right {
+                content: counter(page);
+                font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+                font-size: 9pt;
+                color: #8c9ba5;
+            }
+            @bottom-left {
+                content: "Deprem Takip — Privacy Policy";
+                font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+                font-size: 9pt;
+                color: #8c9ba5;
+            }
+        }
+        
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            color: #2c3e50;
+            line-height: 1.6;
+            font-size: 10.5pt;
+            background-color: #fdfdfd;
+        }
+
+        /* Full bleed hero header using negative margins */
+        .header-container {
+            margin: -20mm -15mm 25px -15mm;
+            padding: 30px 15mm;
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            color: #ffffff;
+            border-bottom: 4px solid #ef4444;
+        }
+
+        .header-container h1 {
+            margin: 0 0 8px 0;
+            font-size: 24pt;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        .header-container .app-subtitle {
+            font-size: 11pt;
+            color: #94a3b8;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+        }
+
+        .header-container .meta-date {
+            font-size: 10pt;
+            color: #cbd5e1;
+            background-color: rgba(255, 255, 255, 0.1);
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+        }
+
+        h2 {
+            font-size: 14pt;
+            color: #0f172a;
+            margin-top: 25px;
+            margin-bottom: 12px;
+            padding-bottom: 6px;
+            border-bottom: 2px solid #e2e8f0;
+            page-break-after: avoid;
+        }
+
+        h3 {
+            font-size: 11.5pt;
+            color: #1e293b;
+            margin-top: 18px;
+            margin-bottom: 8px;
+            font-weight: 600;
+            page-break-after: avoid;
+        }
+
+        p {
+            margin-top: 0;
+            margin-bottom: 12px;
+            color: #334155;
+            text-align: justify;
+        }
+
+        ul {
+            margin-top: 0;
+            margin-bottom: 15px;
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 6px;
+            color: #334155;
+        }
+
+        .intro-box {
+            background-color: #f8fafc;
+            border-left: 4px solid #ef4444;
+            padding: 15px;
+            margin-bottom: 25px;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .intro-box p {
+            margin: 0;
+            font-style: italic;
+            color: #475569;
+        }
+
+        .grid-container {
+            margin-bottom: 15px;
+        }
+
+        .grid-row {
+            display: table;
+            width: 100%;
+            table-layout: fixed;
+            margin-bottom: 10px;
+        }
+
+        .grid-cell {
+            display: table-cell;
+            width: 50%;
+            vertical-align: top;
+            padding-right: 10px;
+        }
+
+        .grid-cell:last-child {
+            padding-right: 0;
+            padding-left: 10px;
+        }
+
+        .card {
+            background-color: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 12px;
+            height: 100%;
+        }
+
+        .card h4 {
+            margin: 0 0 6px 0;
+            font-size: 11pt;
+            color: #0f172a;
+        }
+
+        .card p {
+            margin: 0;
+            font-size: 9.5pt;
+            color: #475569;
+        }
+
+        .service-block {
+            background-color: #f1f5f9;
+            border-radius: 6px;
+            padding: 12px 15px;
+            margin-bottom: 10px;
+            page-break-inside: avoid;
+        }
+
+        .service-block strong {
+            color: #0f172a;
+            display: block;
+            margin-bottom: 4px;
+            font-size: 11pt;
+        }
+
+        .service-block p {
+            margin: 0;
+            font-size: 10pt;
+            color: #475569;
+        }
+
+        .footer-stamp {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 2px solid #e2e8f0;
+            text-align: center;
+            page-break-inside: avoid;
+        }
+
+        .footer-stamp strong {
+            color: #0f172a;
+            font-size: 12pt;
+            display: block;
+        }
+
+        .footer-stamp span {
+            color: #64748b;
+            font-size: 10pt;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header-container">
+        <div class="app-subtitle">Mobile Application</div>
+        <h1>Privacy Policy for Deprem Takip</h1>
+        <div class="meta-date">Last Updated: May 2026</div>
+    </div>
+
+    <div class="intro-box">
+        <p>Deprem Takip ("the Application", "we", "our", or "us") is committed to protecting the privacy and security of its users. This Privacy Policy explains what information is collected, how it is used, stored, shared, and protected when you use the Deprem Takip mobile application. By using the Application, you agree to the collection and use of information in accordance with this Privacy Policy.</p>
+    </div>
+
+    <h2>Information We Collect</h2>
+    <p>We process different types of information depending on how you interact with the application. Below is a detailed breakdown of the data categories involved:</p>
+
+    <h3>Account Information</h3>
+    <p>When you create or use an account, we may collect your email address, unique user identifier, and authentication credentials securely handled through Firebase Authentication.</p>
+
+    <h3>Location Information</h3>
+    <p>The Application may request access to your device's location. This information is strictly utilized to calculate the distance between your current location and registered earthquake events, provide location-based earthquake alerts, and improve notification accuracy. Location access is fully optional and is strictly initiated after explicit user permission is granted.</p>
+
+    <h3>Device & Technical Information</h3>
+    <p>We may automatically collect technical diagnostics, including your specific device model, operating system version, system language settings, unique device identifiers, active application version, and standard mobile network information.</p>
+
+    <h3>Notification Information</h3>
+    <p>To provide responsive, real-time earthquake alerts and push notifications, we collect and store your Firebase Cloud Messaging (FCM) token alongside your customized notification preferences and user-configured alert thresholds.</p>
+
+    <h3>Advertising & Analytics Information</h3>
+    <p>If advertisements are displayed within the Application, Google AdMob may collect operational advertising identifiers, technical device data, and interaction metrics. This data is used solely to render relevant ads and evaluate monetization performance. Additionally, usage data such as features accessed, error logs, diagnostic data, and general performance statistics are monitored to maintain application stability.</p>
+
+    <h2>How We Use Your Information</h2>
+    <p>Collected information is strictly mapped to vital application activities, including:</p>
+    <ul>
+        <li>Providing core real-time earthquake monitoring services.</li>
+        <li>Sending instantaneous earthquake alerts and critical emergency notifications.</li>
+        <li>Calculating precise distance metrics relative to seismic epicenters.</li>
+        <li>Managing user accounts, preferences, and personalized data state.</li>
+        <li>Improving general application performance, UI layout, and server responsiveness.</li>
+        <li>Detecting, preventing, and troubleshooting system abuse, crashes, or security threats.</li>
+        <li>Displaying tailored advertisements and complying with statutory legal obligations.</li>
+    </ul>
+
+    <h2>Location Data Usage</h2>
+    <p>Location data is used solely for earthquake-related services. Specifically, location information may be used to determine proximity to earthquake events, trigger location-based alerts, and display earthquake distance calculations.</p>
+    <p>The Application does not continuously track users in the background beyond what is explicitly required for the core notification functionality selected by the user. Users retain full autonomy and may disable location permissions at any time through their native device settings.</p>
+
+    <h2>Third-Party Services</h2>
+    <p>The Application securely interfaces with established industry-standard third-party services that process data independently according to their own strict privacy terms:</p>
+
+    <div class="service-block">
+        <strong>Firebase Authentication & Firestore</strong>
+        <p>Utilized for secure user registration, tokenized login sessions, and structured storage of application-specific user configurations.</p>
+    </div>
+
+    <div class="service-block">
+        <strong>Firebase Cloud Messaging (FCM)</strong>
+        <p>Responsible for routing instantaneous, time-critical earthquake warning notifications to user devices globally.</p>
+    </div>
+
+    <div class="service-block">
+        <strong>Google AdMob & Play Services</strong>
+        <p>AdMob provides non-intrusive ad placements to fund maintenance, while Google Play Services powers core platform integration and Android background optimization.</p>
+    </div>
+
+    <h2>Data Sharing & Retention</h2>
+    <p><strong>We do not sell user personal information.</strong> Information may only be shared in exceptional situations, such as when required by law, to protect immediate user safety, or to protect the baseline legal rights and infrastructure safety of the Application.</p>
+    <p>User information is retained only for as long as necessary to provide services, comply with legal obligations, resolve operational disputes, and enforce our core structural agreements. Retention metrics automatically vary depending on the technical classification of the logged data.</p>
+
+    <h2>Account & Data Deletion</h2>
+    <p>Users maintain complete data sovereignty and can request complete deletion of their account profile natively through the Application settings interface. Upon trigger, account records are scrubbed from our active servers, and associated application metadata is permanently deleted or securely anonymized. Minimal log snapshots may be securely archived if strictly demanded by active legal compliance frameworks.</p>
+
+    <h2>Data Security & Children's Privacy</h2>
+    <p>We implement strict technical and organizational safety measures designed to prevent unauthorized access, unexpected disclosure, data loss, or structural alteration. However, please note that no digital storage method or transmission over the internet can be guaranteed as 100% immune to sophisticated threats.</p>
+    <p>Furthermore, the Application is not intentionally designed for children under the age thresholds defined by regional laws. We do not knowingly harvest identifiable information from children. If unauthorized data collection is identified, immediate corrective measures are taken to remove the data from all production pipelines.</p>
+
+    <h2>International Transfers & Policy Changes</h2>
+    <p>Information may be dynamically processed and stored across distributed cloud infrastructure where our service providers operate. By interacting with the app, you acknowledge these compliant international transfers. We reserve the right to update this policy at any time, with modifications taking immediate effect upon publication. Continuous check-ins are recommended.</p>
+
+    <div class="footer-stamp">
+        <strong>Deprem Takip</strong>
+        <span>Earthquake Monitoring and Alert Application</span>
+    </div>
+
+</body>
+</html>
+"""
+
+# Write HTML file
+with open("privacy_policy.html", "w", encoding="utf-8") as f:
+    f.write(html_content)
+
+# Convert to PDF using WeasyPrint
+HTML("privacy_policy.html").write_pdf("deprem_takip_privacy_policy.pdf")
+print("PDF and HTML generated successfully.")
