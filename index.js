@@ -202,10 +202,15 @@ if (!notificationsEnabled && !alarmEnabledGlobal) {
 
 
     // 🔥 KONUM KONTROLÜ
-    if (!user.lat || !user.lon) {
-        console.log("❌ KONUM YOK → USER ELENDİ");
-        return;
-    }
+    if (
+    user.lat === undefined ||
+    user.lon === undefined ||
+    user.lat === null ||
+    user.lon === null
+) {
+    console.log("❌ KONUM YOK → USER ELENDİ");
+    return;
+}
 
     const userLat = Number(user.lat);
     const userLon = Number(user.lon);
