@@ -87,28 +87,27 @@ async function checkAndMarkSent(id, mag) {
 async function cleanInvalidTokens(tokens) {
     if (!tokens.length) return;
 
-    const chunk = tokens.slice(0, 10);
+    for (let i = 0; i < tokens.length; i += 10) {
+        const chunk = tokens.slice(i, i + 10);
 
-    const snap = await db.collection("users")
-        .where("token", "in", chunk)
-        .get();
+        const snap = await db.collection("users")
+            .where("token", "in", chunk)
+            .get();
 
-const batch = db.batch();
+        if (snap.empty) continue;
 
-snap.forEach(doc => {
+        const batch = db.batch();
 
-    batch.update(doc.ref, {
+        snap.forEach(doc => {
+            batch.update(doc.ref, {
+                token: admin.firestore.FieldValue.delete(),
+                pushActive: false,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+        });
 
-        token: admin.firestore.FieldValue.delete(),
-
-        updatedAt:
-            admin.firestore.FieldValue.serverTimestamp()
-
-    });
-
-});
-
-await batch.commit();
+        await batch.commit();
+    }
 }
 // ======================
 // 🔔 NOTIFICATION
@@ -139,18 +138,19 @@ const quakeTime =
     // ==========================================
   const snapshot = await db.collection("users")
     .where("pushActive", "==", true)
-    .select(
-        "token",
-        "lat",
-        "lon",
-        "notificationsEnabled",
-        "alarmEnabled",
-        "premiumUntil",
-        "minMag",
-        "maxDist",
-        "alarmMag",
-        "alarmDist"
-    )
+   .select(
+    "token",
+    "lat",
+    "lon",
+    "notificationsEnabled",
+    "alarmEnabled",
+    "isPremium",
+    "premiumUntil",
+    "minMag",
+    "maxDist",
+    "alarmMag",
+    "alarmDist"
+)
     .limit(2000)
     .get();
 
@@ -169,6 +169,8 @@ snapshot.forEach(doc => {
 
     alarmEnabled:
         user.alarmEnabled,
+    isPremium:
+        user.isPremium,
 
     premiumUntil:
         user.premiumUntil,
@@ -191,7 +193,7 @@ alarmDist:
         console.log("❌ TOKEN YOK → SKIP");
         return;
     }
-console.log("✅ TOKEN VAR:", doc.id);
+console.log("✅ TOKEN VAR:", user.token?.slice(0, 25), "LEN:", user.token?.length);
 const notificationsEnabled = user.notificationsEnabled === true;
 const alarmEnabledGlobal = user.alarmEnabled === true;
 
@@ -238,7 +240,7 @@ let sendAlarmFlag = false;
 // ==========================================
 
 // 🔥 YENİ PREMIUM KONTROLÜ
-let isPremium = false;
+let isPremium = user.isPremium === true;
 
 if (user.premiumUntil) {
     try {
@@ -515,6 +517,7 @@ app.get("/test", async (req, res) => {
     try {
         console.log("🧪 TEST ALARM GÖNDERİLİYOR...");
 const userSnap = await db.collection("users")
+    .where("pushActive", "==", true)
     .where("notificationsEnabled", "==", true)
     .limit(1)
     .get();
