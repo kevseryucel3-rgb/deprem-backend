@@ -112,19 +112,36 @@ async function cleanInvalidTokens(tokens) {
     }
 }
 
-// ======================
-// 🔔 NOTIFICATION
-// ======================
+// =============================================================================
+// 🔔 NOTIFICATION (VERİ KORUMALI & HİBRİT DESTEKLİ)
+// =============================================================================
 async function sendNotification(eq) {
-    const mag = Number(eq.properties.mag || 0);
-    const place = String(eq.properties.place || "Deprem");
-    const source = eq.properties.source || "usgs";
+    // Hem eq.properties.mag hem de eq.mag yapılarını güvenle korur
+    const mag = Number(eq.properties?.mag !== undefined ? eq.properties.mag : (eq.mag || 0));
+    const place = String(eq.properties?.place || eq.place || "Deprem");
+    const source = String(eq.properties?.source || eq.source || "usgs").toLowerCase();
 
-    const [lon, lat, depthRaw] = eq.geometry.coordinates;
+    let lat, lon, depthRaw;
+
+    // 🛡️ KOORDİNAT KORUMA: eq.geometry yoksa çökmesini engeller, düz veriden okur
+    if (eq.geometry?.coordinates) {
+        [lon, lat, depthRaw] = eq.geometry.coordinates;
+    } else {
+        lat = eq.lat || eq.latitude;
+        lon = eq.lon || eq.longitude || eq.lng;
+        depthRaw = eq.depth || 0;
+    }
+
     const depth = Math.round(depthRaw || 0);
-    const quakeTime = eq.properties.time || Date.now();
+    const quakeTime = eq.properties?.time || eq.time || Date.now();
 
     console.log(`📨 İşlem Başladı: ${source} | Şiddet: ${mag} | Yer: ${place}`);
+
+    // Eksik koordinat veya şiddet durumunda FCM patlamasın diye koruma
+    if (isNaN(Number(lat)) || isNaN(Number(lon))) {
+        console.log("⚠️ Koordinat geçersiz olduğu için bildirim adımı atlandı.");
+        return;
+    }
 
     const snapshot = await db.collection("users")
         .where("pushActive", "==", true)
@@ -162,7 +179,7 @@ async function sendNotification(eq) {
         const userLon = Number(user.lon);
         if (isNaN(userLat) || isNaN(userLon)) return;
 
-        const distance = getDistance(userLat, userLon, lat, lon);
+        const distance = getDistance(userLat, userLon, Number(lat), Number(lon));
 
         // 🇹🇷 KANDİLLİ ÖZEL KURALI
         if (source === "kandilli") {
