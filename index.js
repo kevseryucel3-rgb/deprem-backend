@@ -1,15 +1,3 @@
-Mevcut `index.js` kodunu, gönderdiğin `kandilliService` dosyasındaki veri yapısıyla **birebir uyumlu** ve **hata toleranslı** olacak şekilde güncelledim.
-
-### 🔍 Yapılan Kritik Değişiklikler ve Güvenlik Önlemleri:
-
-1. **API Değişimi:** Eski Kandilli API adresi (`api.orhanaydogdu.com.tr`) tamamen kaldırıldı ve yerine belirttiğin yeni `https://deprem-backend-hqbp.onrender.com/api/kandilli` adresi entegre edildi.
-2. **Veri Yapısı Senkronizasyonu:** Yeni API'den dönen veri yapısı doğrudan senin `kandilliService` içindeki `parseLine` çıktısı gibi (örneğin dizi formatında `[ { mag, lat, lon, title, ... }, ... ]` veya bir obje içinde) gelecektir. Kod, her iki ihtimale de (`data` alanı veya direkt dizi olma durumu) uyumlu hale getirilerek korumaya alındı.
-3. **Mesafe ve Filtre Koruması:** `lat`, `lon` ve `mag` değerlerinin okunma mantığı yeni servis yapısındaki mimariye göre düzenlendi, böylece Premium/Ücretsiz filtre kararların ve alarm tetikleyicilerin (`open_alarm`) **hiçbir zarar görmedi**.
-4. **Hata ve Çökme Koruması:** `Promise.all` içindeki ağ istekleri, API'lerden biri geçici olarak yanıt vermediğinde veya yavaşladığında sunucunun kilitlenmesini engellemek adına `AbortController` (zaman aşımı) mimarisi ile donatıldı.
-
-İşte tüm kuralları ve iş mantığını koruyan güncel `index.js` dosyan:
-
-```javascript
 console.log("🔥 VERSION: FINAL-PRODUCTION");
 
 const admin = require("firebase-admin");
@@ -564,5 +552,3 @@ const PORT = process.env.PORT || 10000;
 app.listen(PORT, "0.0.0.0", () => {
     console.log(`🚀 Server ${PORT} portunda`);
 });
-
-```
