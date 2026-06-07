@@ -27,7 +27,7 @@ const db = admin.firestore();
 
 let isProcessing = false;
 let lastRun = 0;
-
+const CHECK_INTERVAL_MS = 45 * 1000;
 function getDistance(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -255,7 +255,7 @@ async function sendNotification(eq) {
 }
 
 async function checkEarthquakes() {
-  if (Date.now() - lastRun < 15000) return;
+  if (Date.now() - lastRun < CHECK_INTERVAL_MS) return;
   if (isProcessing) return;
 
   lastRun = Date.now();
@@ -334,7 +334,7 @@ app.get("/api/earthquakes", async (req, res) => {
   });
 });
 
-setInterval(checkEarthquakes, 45 * 1000);
+setInterval(checkEarthquakes, CHECK_INTERVAL_MS);
 checkEarthquakes();
 
 const PORT = process.env.PORT || 10000;
