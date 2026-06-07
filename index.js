@@ -97,3 +97,247 @@ function normalizeUsgsFeature(feature) {
     },
   };
 }
+
+async function getUsgsDepremler() {
+  try {
+    const response = await fetch(
+      "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson",
+      {
+        headers: {
+          "User-Agent": "Mozilla/5.0",
+        },
+      }
+    );
+
+    const json = await response.json();
+    const features = Array.isArray(json.features) ? json.features : [];
+
+    return features
+      .map((feature) => normalizeUsgsFeature(feature))
+      .filter(Boolean);
+  } catch (error) {
+    console.error("USGS veri hatasi:", error.message);
+    return [];
+  }
+}
+
+function isDuplicate(a, b) {
+  const timeA = Number(a.time || new Date(a.date_time).getTime() || 0);
+  const timeB = Number(b.time || new Date(b.date_time).getTime() || 0);
+
+  return (
+    Math.abs(Number(a.lat) - Number(b.lat)) < 0.05 &&
+    Math.abs(Number(a.lon) - Number(b.lon)) < 0.05 &&
+    Math.abs(timeA - timeB) < 5 * 60 * 1000
+  );
+}
+
+function mergeEarthquakes(usgs, kandilli) {
+  const merged = [...usgs];
+
+  for (const quake of kandilli) {
+    const duplicate = merged.some((existing) => isDuplicate(existing, quake));
+    if (!duplicate) merged.push(quake);
+  }
+
+  return merged
+    .sort((a, b) => Number(b.time || 0) - Number(a.time || 0))
+    .slice(0, 500);
+}
+
+async function sendNotification(eq) {
+  const mag = Number(eq.mag || eq.magnitude || 0);
+  const place = String(eq.place || eq.title || eq.location || "Deprem");
+  const source = eq.source || eq.provider || "unknown";
+  const lat = Number(eq.lat || eq.latitude);
+  const lon = Number(eq.lon || eq.longitude || eq.lng);
+  const depth = Number(eq.depth || 0);
+  const quakeTime = String(eq.time || Date.now());
+
+  if (!mag || !lat || !lon) return;
+
+  console.log(`Bildirim kontrolu: ${source} | ${mag} | ${place}`);
+
+  const snapshot = await db.collection("users")
+    .where("pushActive", "==", true)
+    .select(
+      "token",
+      "lat",
+      "lon",
+      "notificationsEnabled",
+      "alarmEnabled",
+      "isPremium",
+      "premiumUntil",
+      "minMag",
+      "maxDist",
+      "alarmMag",
+      "alarmDist"
+    )
+    .limit(2000)
+    .get();
+
+  const messages = [];
+
+  snapshot.forEach((doc) => {
+    const user = doc.data();
+    if (!user.token) return;
+
+    const notificationsEnabled = user.notificationsEnabled === true;
+    const alarmEnabled = user.alarmEnabled === true;
+    if (!notificationsEnabled && !alarmEnabled) return;
+
+    const userLat = Number(user.lat);
+    const userLon = Number(user.lon);
+    if (!Number.isFinite(userLat) || !Number.isFinite(userLon)) return;
+
+    const distance = getDistance(userLat, userLon, lat, lon);
+
+    let isPremium = user.isPremium === true;
+    if (user.premiumUntil) {
+      try {
+        isPremium = user.premiumUntil.toDate() > new Date();
+      } catch (_) {}
+    }
+
+    let sendNotificationFlag = false;
+    let sendAlarmFlag = false;
+
+    if (isPremium) {
+      const notifMinMag = Number(user.minMag || 1.0);
+      const notifMaxDist = Number(user.maxDist || 500);
+      const alarmMinMag = Number(user.alarmMag ?? 4.5);
+      const alarmMaxDist = Number(user.alarmDist ?? 500);
+
+      if (notificationsEnabled && mag >= notifMinMag && distance <= notifMaxDist) {
+        sendNotificationFlag = true;
+      }
+
+      if (alarmEnabled && mag >= alarmMinMag && distance <= alarmMaxDist) {
+        sendNotificationFlag = true;
+        sendAlarmFlag = true;
+      }
+    } else if (notificationsEnabled && mag >= 3.0 && distance <= 500) {
+      sendNotificationFlag = true;
+    }
+
+    if (!sendNotificationFlag) return;
+
+    messages.push({
+      token: user.token,
+      data: {
+        title: `${mag.toFixed(1)} Deprem`,
+        body: `${place} - ${distance} km - ${depth} km`,
+        place,
+        mag: String(mag),
+        lat: String(lat),
+        lon: String(lon),
+        depth: String(depth),
+        distance: String(distance),
+        source,
+        time: quakeTime,
+        open_alarm: sendAlarmFlag ? "true" : "false",
+      },
+      android: {
+        priority: "high",
+      },
+    });
+  });
+
+  for (let i = 0; i < messages.length; i += 500) {
+    const chunk = messages.slice(i, i + 500);
+    try {
+      const result = await admin.messaging().sendEach(chunk);
+      console.log(`FCM sonuc: ${result.successCount}/${chunk.length}`);
+    } catch (error) {
+      console.error("FCM hata:", error.message);
+    }
+  }
+}
+
+async function checkEarthquakes() {
+  if (Date.now() - lastRun < 15000) return;
+  if (isProcessing) return;
+
+  lastRun = Date.now();
+  isProcessing = true;
+
+  try {
+    const [usgs, kandilli] = await Promise.all([
+      getUsgsDepremler(),
+      getKandilliDepremler(),
+    ]);
+
+    const all = mergeEarthquakes(usgs, kandilli);
+    console.log(`Veri cekildi: USGS=${usgs.length}, Kandilli=${kandilli.length}, Toplam=${all.length}`);
+
+    for (const eq of all) {
+      const id = eq.id || eq.earthquake_id || `${eq.source}_${eq.lat}_${eq.lon}_${eq.mag}`;
+      const mag = Number(eq.mag || eq.magnitude || 0);
+      const alreadySent = await checkAndMarkSent(id, mag);
+      if (!alreadySent) await sendNotification(eq);
+    }
+  } catch (error) {
+    console.error("Genel deprem kontrol hatasi:", error.message);
+  } finally {
+    isProcessing = false;
+  }
+}
+
+app.get("/", (req, res) => {
+  res.send("Deprem API aktif");
+});
+
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    processing: isProcessing,
+    time: new Date().toISOString(),
+  });
+});
+
+app.get("/api/kandilli", async (req, res) => {
+  const result = await getKandilliDepremler();
+  res.json({
+    status: true,
+    source: "kandilli",
+    count: result.length,
+    result,
+  });
+});
+
+app.get("/api/usgs", async (req, res) => {
+  const result = await getUsgsDepremler();
+  res.json({
+    status: true,
+    source: "usgs",
+    count: result.length,
+    result,
+  });
+});
+
+app.get("/api/earthquakes", async (req, res) => {
+  const [usgs, kandilli] = await Promise.all([
+    getUsgsDepremler(),
+    getKandilliDepremler(),
+  ]);
+
+  const result = mergeEarthquakes(usgs, kandilli);
+
+  res.json({
+    status: true,
+    sources: {
+      usgs: usgs.length,
+      kandilli: kandilli.length,
+    },
+    count: result.length,
+    result,
+  });
+});
+
+setInterval(checkEarthquakes, 45 * 1000);
+checkEarthquakes();
+
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server ${PORT} portunda aktif`);
+});
