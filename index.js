@@ -488,7 +488,17 @@ app.get("/health", (req, res) => {
         time: new Date()
     });
 });
-
+app.get("/api/kandilli", async (req, res) => {
+    try {
+        const data = await getKandilliDepremler();
+        res.json(data);
+    } catch (err) {
+        console.error("❌ Kandilli API Hatası:", err);
+        res.status(500).json({
+            error: err.message
+        });
+    }
+});
 // ======================
 // 🧪 TEST (ALARM ZORLA)
 // ======================
