@@ -403,16 +403,16 @@ async function checkEarthquakes() {
 
     try {
 
-        const [usgsRes, kandilliRes] = await Promise.all([
-            fetch("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson"),
-            fetch("https://deprem-backend-hqbp.onrender.com/api/kandilli")
-        ]);
+      const [usgsRes, kandilliRawList] = await Promise.all([
+    fetch("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson"),
+    getKandilliDepremler() // 🚀 Doğrudan kendi servis fonksiyonunu çağırdık!
+]);
 
-        const usgs = await usgsRes.json();
-        const kandilli = await kandilliRes.json();
+const usgs = await usgsRes.json();
+const usgsList = usgs.features || [];
 
-        const usgsList = usgs.features || [];
-        const kandilliList = kandilli.result || [];
+// Harita endpoint'i için yazdığımız temizleme fonksiyonunu burada da kullanarak veriyi sağlama alıyoruz
+const kandilliList = cleanKandilliData(kandilliRawList);
 
         console.log("📡 Kandilli:", kandilliList.length);
 
