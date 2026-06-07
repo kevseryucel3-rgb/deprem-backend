@@ -547,6 +547,16 @@ app.get("/test", async (req, res) => {
 });
 
 // ======================
+app.get("/api/kandilli", async (req, res) => {
+    try {
+        const data = await getKandilliDepremler();
+        console.log(`📡 Kandilli API called - ${data.length} deprem döndü`);
+        res.json(data);           // direkt dizi dön
+    } catch (err) {
+        console.error("Kandilli API hatası:", err);
+        res.status(500).json({ error: err.message });
+    }
+});
 const PORT = process.env.PORT || 10000;
 
 app.listen(PORT, "0.0.0.0", () => {
