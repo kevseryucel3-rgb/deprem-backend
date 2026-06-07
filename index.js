@@ -365,17 +365,37 @@ app.get("/api/kandilli", async (req, res) => {
             lat: Number(eq.lat || eq.latitude || 0),
             longitude: Number(eq.lon || eq.longitude || eq.lng || 0),
             lon: Number(eq.lon || eq.longitude || eq.lng || 0),
+            // Flutter'ın double.tryParse(e['lng']) yapısı için kritik field:
+            lng: Number(eq.lon || eq.longitude || eq.lng || 0), 
             depth: Number(eq.depth || 0),
             title: String(eq.title || eq.location || eq.place || "Türkiye"),
-            place: String(eq.title || eq.location || eq.place || "Türkiye")
+            place: String(eq.title || eq.location || eq.place || "Türkiye"),
+            date: eq.date || eq.date_time || new Date().toISOString(),
+            // Flutter'ın 'geojson' null check'ini geçmesi için koordinatları gömüyoruz
+            geojson: eq.geojson ? eq.geojson : {
+                type: "Point",
+                coordinates: [
+                    Number(eq.longitude || eq.lon || eq.lng || 0),
+                    Number(eq.latitude || eq.lat || 0)
+                ]
+            }
         }));
 
-        // Hem saf array bekleyen hem de eski obje yapısını arayan Flutter kodları için hibrit yanıt:
+        // 🎯 FLUTTER'IN ARADIĞI 'status' VE 'result' SARMALINI BURADA OLUŞTURUYORUZ
         res.setHeader("Content-Type", "application/json");
-        res.json(cleanData); 
+        res.json({
+            status: true,        // Flutter'ın if kontrolü için
+            source: "kandilli",
+            count: cleanData.length,
+            result: cleanData    // Flutter'ın döngüye soktuğu array
+        }); 
     } catch (err) {
         console.error("❌ Kandilli API Hatası:", err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ 
+            status: false, 
+            error: err.message,
+            result: [] 
+        });
     }
 });
 
