@@ -1,4 +1,4 @@
-console.log("🔥 VERSION: FINAL-PRODUCTION");
+console.log("🔥 VERSION: FINAL-PRODUCTION - OPTIMIZED");
 
 const admin = require("firebase-admin");
 const cron = require("node-cron");
@@ -35,7 +35,7 @@ let isProcessing = false;
 let lastRun = 0;
 
 // ======================
-// 📏 MESAFE
+// 📏 MESAFE HESAPLAMA (Haversine Formülü)
 // ======================
 function getDistance(lat1, lon1, lat2, lon2) {
     const R = 6371;
@@ -52,10 +52,12 @@ function getDistance(lat1, lon1, lat2, lon2) {
 }
 
 // ======================
-// 🔒 DUPLICATE CONTROL
+// 🔒 MÜKERRER KONTROLÜ (Transaction Safe)
 // ======================
 async function checkAndMarkSent(id, mag) {
-    const ref = db.collection("sent").doc(id);
+    // Firestore doküman ID'lerinde nokta veya geçersiz karakter temizliği kontrolü
+    const safeDocId = id.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const ref = db.collection("sent").doc(safeDocId);
 
     return await db.runTransaction(async (tx) => {
         const doc = await tx.get(ref);
@@ -82,7 +84,7 @@ async function checkAndMarkSent(id, mag) {
 }
 
 // ======================
-// 🧹 TOKEN CLEANUP
+// 🧹 TOKEN TEMİZLEME
 // ======================
 async function cleanInvalidTokens(tokens) {
     if (!tokens.length) return;
@@ -109,8 +111,9 @@ async function cleanInvalidTokens(tokens) {
         await batch.commit();
     }
 }
+
 // ======================
-// 🔔 NOTIFICATION
+// 🔔 BİLDİRİM GÖNDERİMİ
 // ======================
 async function sendNotification(eq) {
     const mag = Number(eq.properties.mag || 0);
@@ -119,254 +122,116 @@ async function sendNotification(eq) {
 
     const [lon, lat, depthRaw] = eq.geometry.coordinates;
     const depth = Math.round(depthRaw || 0);
-const quakeTime =
-    eq.properties.time ||
-    eq.properties.timestamp ||
-    eq.properties.date ||
-    eq.properties.created_at ||
-    Date.now();
+    const quakeTime = eq.properties.time || eq.properties.timestamp || eq.properties.date || Date.now();
 
     console.log(`📨 İşlem Başladı: ${source} | Şiddet: ${mag} | Yer: ${place}`);
 
-    // ==========================================
-    // 🌍 KURAL 1: GLOBAL BÜYÜK DEPREM (3.0+)
-    // ==========================================
- 
-
-    // ==========================================
-    // 📍 KURAL 2: KİŞİSELLEŞTİRİLMİŞ FİLTRELEME
-    // ==========================================
-  const snapshot = await db.collection("users")
-    .where("pushActive", "==", true)
-   .select(
-    "token",
-    "lat",
-    "lon",
-    "notificationsEnabled",
-    "alarmEnabled",
-    "isPremium",
-    "premiumUntil",
-    "minMag",
-    "maxDist",
-    "alarmMag",
-    "alarmDist"
-)
-    .limit(2000)
-    .get();
+    // Cihaz ayarlarını optimize etmek için projeye uygun limitlendirilmiş veri çekimi
+    const snapshot = await db.collection("users")
+        .where("pushActive", "==", true)
+        .select(
+            "token", "lat", "lon", "notificationsEnabled", "alarmEnabled",
+            "isPremium", "premiumUntil", "minMag", "maxDist", "alarmMag", "alarmDist"
+        )
+        .limit(2000)
+        .get();
 
     const messages = [];
 
-snapshot.forEach(doc => {
-    const user = doc.data();
+    snapshot.forEach(doc => {
+        const user = doc.data();
 
-    // 🔥 DEBUG → kullanıcıyı gör
-  console.log("👤 USER:", {
-    lat: user.lat,
-    lon: user.lon,
+        if (!user.token) return;
 
-    notificationsEnabled:
-        user.notificationsEnabled,
+        const notificationsEnabled = user.notificationsEnabled === true;
+        const alarmEnabledGlobal = user.alarmEnabled === true;
 
-    alarmEnabled:
-        user.alarmEnabled,
-    isPremium:
-        user.isPremium,
+        if (!notificationsEnabled && !alarmEnabledGlobal) return;
 
-    premiumUntil:
-        user.premiumUntil,
+        if (user.lat === undefined || user.lon === undefined || user.lat === null || user.lon === null) {
+            return;
+        }
 
-    minMag:
-        user.minMag,
-
-    maxDist:
-        user.maxDist,
-alarmMag:
-    user.alarmMag,
-
-alarmDist:
-    user.alarmDist
-
-});
-
-    // 🔥 TOKEN YOKSA
-    if (!user.token) {
-        console.log("❌ TOKEN YOK → SKIP");
-        return;
-    }
-console.log("✅ TOKEN VAR:", user.token?.slice(0, 25), "LEN:", user.token?.length);
-const notificationsEnabled = user.notificationsEnabled === true;
-const alarmEnabledGlobal = user.alarmEnabled === true;
-
-if (!notificationsEnabled && !alarmEnabledGlobal) {
-    console.log("🔕 Bildirim ve alarm kapalı → SKIP");
-    return;
-}
-
-
-    // 🔥 KONUM KONTROLÜ
-    if (
-    user.lat === undefined ||
-    user.lon === undefined ||
-    user.lat === null ||
-    user.lon === null
-) {
-    console.log("❌ KONUM YOK → USER ELENDİ");
-    return;
-}
-
-    const userLat = Number(user.lat);
-    const userLon = Number(user.lon);
-       if (isNaN(userLat) || isNaN(userLon)) {
-    console.log("❌ GEÇERSİZ KONUM");
-    return;
-}
+        const userLat = Number(user.lat);
+        const userLon = Number(user.lon);
+        if (isNaN(userLat) || isNaN(userLon)) return;
 
         const distance = getDistance(userLat, userLon, lat, lon);
 
-    // 🇹🇷 KANDİLLİ ÖZEL KURALI: Türkiye sınırları dışında Kandilli bildirimi gönderilmez.
+        // 🇹🇷 KANDİLLİ ÖZEL KURALI: Türkiye sınırları dışında Kandilli bildirimi gönderilmez.
         if (source === "kandilli") {
-            const isTR =
-                userLat >= 34 && userLat <= 44 &&
-                userLon >= 24 && userLon <= 47; 
+            const isTR = userLat >= 34 && userLat <= 44 && userLon >= 24 && userLon <= 47; 
             if (!isTR) return;
         }
 
-       
-let sendNotificationFlag = false;
-let sendAlarmFlag = false;
+        let sendNotificationFlag = false;
+        let sendAlarmFlag = false;
 
-// ==========================================
-// 🛡️ KURAL KORUMA: Premium vs Ücretsiz Ayrımı
-// ==========================================
+        // 🔥 PREMIUM KONTROLÜ
+        let isPremium = user.isPremium === true;
+        if (user.premiumUntil) {
+            try {
+                const until = user.premiumUntil.toDate();
+                isPremium = until > new Date();
+            } catch (e) {
+                console.log("⚠️ premiumUntil parse hatası:", e.message);
+            }
+        }
 
-// 🔥 YENİ PREMIUM KONTROLÜ
-let isPremium = user.isPremium === true;
+        if (isPremium) {
+            const notifMinMag = Number(user.minMag || 1);
+            const notifMaxDist = Number(user.maxDist || 500);
+            const alarmMinMag = Number(user.alarmMag ?? 4.5);
+            const alarmMaxDist = Number(user.alarmDist ?? 15000);
+            const alarmEnabled = user.alarmEnabled === true;
 
-if (user.premiumUntil) {
-    try {
-        const until = user.premiumUntil.toDate();
-        isPremium = until > new Date();
-    } catch (e) {
-        console.log("⚠️ premiumUntil parse hatası:", e.message);
-    }
-}
-console.log("💎 PREMIUM CHECK:", {
-    userId: doc.id,
-    isPremium,
-    premiumUntil: user.premiumUntil || null
-});
-if (isPremium) {
+            if (mag >= notifMinMag && distance <= notifMaxDist) {
+                sendNotificationFlag = true;
+            }
 
-    const notifMinMag = Number(user.minMag || 1);
-    const notifMaxDist = Number(user.maxDist || 500);
-
-const alarmMinMag = Number(user.alarmMag ?? 4.5);
-const alarmMaxDist = Number(user.alarmDist ?? 15000);
-const alarmEnabled = user.alarmEnabled === true;
-
-
- // 🔔 NOTIFICATION
-console.log("🔎 NOTIF CHECK:", {
-    userId: doc.id,
-    mag,
-    notifMinMag,
-    distance,
-    notifMaxDist,
-    passMag: mag >= notifMinMag,
-    passDist: distance <= notifMaxDist
-});
-
-if (mag >= notifMinMag && distance <= notifMaxDist) {
-    sendNotificationFlag = true;
-    console.log("✅ NOTIF UYGUN:", doc.id);
-} else {
-    console.log("❌ NOTIF UYGUN DEĞİL:", doc.id);
-}
-
-    // 🌍 KONUM KONTROLÜ
-    const isTR =
-        lat >= 34 && lat <= 44 &&
-        lon >= 24 && lon <= 47;
-
-    const isNearby = distance <= 600;
-    const isBigGlobal = mag >= 6.5;
-
-    // 🚨 ALARM
-if (
-    alarmEnabled &&
-    mag >= alarmMinMag &&
-    distance <= alarmMaxDist
-) {
-    sendNotificationFlag = true;
-    sendAlarmFlag = true;
-}
-
-
-} else {
-
-    // 🆓 FREE USER
-    if (mag >= 2.0 && distance <= 1200) {
-        sendNotificationFlag = true;
-    }
-
-}
-console.log("📌 FINAL USER DECISION:", {
-    userId: doc.id,
-    sendNotificationFlag,
-    sendAlarmFlag,
-    isPremium
-});
+            if (alarmEnabled && mag >= alarmMinMag && distance <= alarmMaxDist) {
+                sendNotificationFlag = true;
+                sendAlarmFlag = true;
+            }
+        } else {
+            // 🆓 ÜCRETSİZ KULLANICI FİLTRESİ
+            if (mag >= 2.0 && distance <= 1200) {
+                sendNotificationFlag = true;
+            }
+        }
 
         if (!sendNotificationFlag) return;
 
-        // ==========================================
-        // 🛡️ VERİ & BİLDİRİM KORUMA
-        // ==========================================
+        const safeMag = isNaN(mag) ? 0 : mag;
+        const safePlace = place && place.length > 2 ? place : "Bilinmeyen konum";
+        const safeDistance = distance || 0;
+        const safeDepth = depth || 0;
 
-    // 🔥 EKLE → bu en kritik fix
-   const safeMag = isNaN(mag) ? 0 : mag;
-const safePlace = place && place.length > 2 ? place : "Bilinmeyen konum";
-const safeDistance = distance || 0;
-const safeDepth = depth || 0;
-console.log("🚨 ALARM FLAG:", sendAlarmFlag, "MAG:", mag);
-messages.push({
-    token: user.token,
+        messages.push({
+            token: user.token,
+            data: {
+                title: `${safeMag.toFixed(1)} Deprem`,
+                body: `${safePlace} • ${safeDistance} km • ${safeDepth} km`,
+                place: safePlace,
+                mag: String(safeMag),
+                lat: String(lat),
+                lon: String(lon),
+                depth: String(safeDepth),
+                distance: String(safeDistance),
+                source: source,
+                time: String(quakeTime),
+                open_alarm: sendAlarmFlag ? "true" : "false"
+            },
+            android: { priority: "high" }
+        });
+    });
 
-   data: {
-    title: `${safeMag.toFixed(1)} Deprem`,
-    body: `${safePlace} • ${safeDistance} km • ${safeDepth} km`,
-    place: safePlace,
-    mag: String(safeMag),
-    lat: String(lat),
-    lon: String(lon),
-    depth: String(safeDepth),
-    distance: String(safeDistance),
-    source: source,
-    time: String(quakeTime),
-    open_alarm: sendAlarmFlag ? "true" : "false"
-},
-
-    android: { 
-        priority: "high"
-    }
-});
-});
-
-    // ==========================================
-    // 🚀 BATCH GÖNDERİM (GÜVENLİ ÇIKIŞ)
-    // ==========================================
-    if (messages.length === 0) {
-        console.log("ℹ️ Kriterlere uyan kullanıcı bulunamadı.");
-        return;
-    }
+    if (messages.length === 0) return;
 
     for (let i = 0; i < messages.length; i += 500) {
         const batch = messages.slice(i, i + 500);
         try {
-            // sendEach kullanarak güvenli ve hızlı toplu gönderim
             const res = await admin.messaging().sendEach(batch);
-            
-            // Hatalı tokenları temizleme süreci
             const invalidTokens = [];
             res.responses.forEach((r, idx) => {
                 if (!r.success) {
@@ -379,11 +244,9 @@ messages.push({
             });
             
             if (invalidTokens.length > 0) {
-                console.log(`🧹 ${invalidTokens.length} adet geçersiz token temizleniyor...`);
                 await cleanInvalidTokens(invalidTokens);
             }
-            
-            console.log(`✅ ${res.successCount} adet bireysel bildirim iletildi.`);
+            console.log(`✅ ${res.successCount} adet bildirim başarıyla iletildi.`);
         } catch (e) {
             console.error("❌ FCM Batch Hatası:", e.message);
         }
@@ -391,10 +254,9 @@ messages.push({
 }
 
 // ======================
-// 🔍 LOOP
+// 🔍 ANA DÖNGÜ (LOOP)
 // ======================
 async function checkEarthquakes() {
-
     if (Date.now() - lastRun < 15000) return;
     if (isProcessing) return;
 
@@ -402,166 +264,82 @@ async function checkEarthquakes() {
     isProcessing = true;
 
     try {
+        const [usgsRes, kandilliRawList] = await Promise.all([
+            fetch("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson"),
+            getKandilliDepremler()
+        ]);
 
-      const [usgsRes, kandilliRawList] = await Promise.all([
-    fetch("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson"),
-    getKandilliDepremler() // 🚀 Doğrudan kendi servis fonksiyonunu çağırdık!
-]);
+        const usgs = await usgsRes.json();
+        const usgsList = usgs.features || [];
+        const kandilliList = cleanKandilliData(kandilliRawList);
 
-const usgs = await usgsRes.json();
-const usgsList = usgs.features || [];
+        console.log(`📡 Tarama Yapıldı -> USGS: ${usgsList.length} | Kandilli: ${kandilliList.length}`);
 
-// Harita endpoint'i için yazdığımız temizleme fonksiyonunu burada da kullanarak veriyi sağlama alıyoruz
-const kandilliList = cleanKandilliData(kandilliRawList);
-
-        console.log("📡 Kandilli:", kandilliList.length);
-
-        // 🌍 USGS
-      for (const eq of usgsList) {
-    const [lon, lat, depthRaw] = eq.geometry.coordinates; // 🔥 BU SATIRI EKLE
-    const mag = Number(eq.properties.mag || 0);
-    
-    // uniqueId kısmını da buna göre güncelle:
-    const id = `usgs_${eq.id}`; // Daha güvenli bir ID
-    const sent = await checkAndMarkSent(id, mag);
-    
-    if (!sent) {
-        await sendNotification({
-            ...eq,
-            geometry: { coordinates: [lon, lat, depthRaw] }, // Veriyi doğru paketle
-            properties: { ...eq.properties, source: "usgs" }
-        });
-    }
-}
-
-// 🇹🇷 KANDİLLİ
-// 🇹🇷 KANDİLLİ
-for (const eq of kandilliList) {
-
-    try {
-        const mag = parseFloat(eq.mag || eq.ml || eq.md);
-        if (isNaN(mag)) continue;
-
-        const lat = Number(eq.geojson?.coordinates?.[1] || eq.lat);
-        const lon = Number(eq.geojson?.coordinates?.[0] || eq.lng);
-        const depth = Number(eq.depth || 0);
-
-        if (!lat || !lon) continue;
-
-        const id = `kandilli_${lat}_${lon}_${mag}`;
-        const sent = await checkAndMarkSent(id, mag);
-
-        if (!sent) {
-
-            console.log("🇹🇷 KANDİLLİ RAW:", eq.title);
-
-            // 🔥 YERİ DOĞRU ÇEK
-            let cleanPlace = eq.title || eq.location || eq.region || "Türkiye";
-
-            cleanPlace = cleanPlace
-                .replace(/^ML\s*\d+(\.\d+)?\s*-\s*/i, "")
-                .replace(/^\d+(\.\d+)?\s*-\s*/i, "")
-                .trim();
-
-            // 🔥 BOŞSA fallback
-            if (!cleanPlace || cleanPlace.length < 3) {
-                cleanPlace = `${lat.toFixed(2)}, ${lon.toFixed(2)}`;
+        // 🌍 USGS İŞLEME
+        for (const eq of usgsList) {
+            const [lon, lat, depthRaw] = eq.geometry.coordinates;
+            const mag = Number(eq.properties.mag || 0);
+            const id = `usgs_${eq.id}`;
+            
+            const sent = await checkAndMarkSent(id, mag);
+            if (!sent) {
+                await sendNotification({
+                    ...eq,
+                    geometry: { coordinates: [lon, lat, depthRaw] },
+                    properties: { ...eq.properties, source: "usgs" }
+                });
             }
-
-            console.log("📍 TEMİZLENMİŞ:", cleanPlace);
-
-          await sendNotification({
-    properties: {
-        mag: mag,
-        place: cleanPlace,
-        source: "kandilli",
-        date: eq.date || eq.created_at || Date.now()
-    },
-    geometry: {
-        coordinates: [lon, lat, depth]
-    }
-});
         }
 
-    } catch (err) {
-        console.error("❌ KANDİLLİ HATA:", err.message);
+        // 🇹🇷 KANDİLLİ İŞLEME
+        for (const eq of kandilliList) {
+            try {
+                const mag = parseFloat(eq.mag);
+                if (isNaN(mag)) continue;
+
+                const lat = Number(eq.lat);
+                const lon = Number(eq.lon);
+                const depth = Number(eq.depth || 0);
+
+                if (!lat || !lon) continue;
+
+                // 🔥 CRITICAL FIX: kandilliService.js'den gelen güvenli temiz ID'yi kullanıyoruz!
+                // Noktalı eski manuel string üretimini silerek entegrasyon sağladık.
+                const id = eq.id || `kandilli_${lat}_${lon}_${mag}`;
+                
+                const sent = await checkAndMarkSent(id, mag);
+
+                if (!sent) {
+                    await sendNotification({
+                        properties: {
+                            mag: mag,
+                            place: eq.title,
+                            source: "kandilli",
+                            date: eq.date
+                        },
+                        geometry: {
+                            coordinates: [lon, lat, depth]
+                        }
+                    });
+                }
+            } catch (err) {
+                console.error("❌ Tekil Kandilli Satır Hatası:", err.message);
+            }
+        }
+
+    } catch (e) {
+        console.error("❌ GENEL LOOP HATASI:", e.message);
+    } finally {
+        isProcessing = false; // Sistem kilitlenmesini engeller.
     }
 }
 
-// ======================
-// 🔥 GLOBAL HATA KONTROLÜ + KİLİT AÇMA
-// ======================
-} catch (e) {
-    console.error("❌ GENEL HATA:", e.message);
-} finally {
-    isProcessing = false; // 🔥 EN KRİTİK SATIR (SİSTEM KİLİTLENMESİN)
-}
-}
 // ======================
 cron.schedule("*/45 * * * * *", checkEarthquakes);
 
 // ======================
-app.get("/", (req, res) => res.send("Deprem Servisi Aktif 🚀"));
-
-app.get("/health", (req, res) => {
-    res.json({
-        status: "ok",
-        processing: isProcessing,
-        time: new Date()
-    });
-});
+// API ENDPOINTS & HELPERS
 // ======================
-// 🧪 TEST (ALARM ZORLA)
-// ======================
-app.get("/test", async (req, res) => {
-    try {
-        console.log("🧪 TEST ALARM GÖNDERİLİYOR...");
-const userSnap = await db.collection("users")
-    .where("pushActive", "==", true)
-    .where("notificationsEnabled", "==", true)
-    .limit(1)
-    .get();
-
-if (userSnap.empty) {
-    return res.send("Aktif kullanıcı bulunamadı");
-}
-
-const testUser = userSnap.docs[0].data();
-
-if (!testUser.token) {
-    return res.send("Test kullanıcısında token yok");
-}
-        await admin.messaging().send({
-            token: testUser.token,
-            android: {
-                priority: "high"
-            },data: {
-    id: "test_alarm_123",
-    title: "🚨 TEST ALARMI",
-    body: "Bu bir simülasyon alarmıdır.",
-    mag: "6.0",
-    lat: "39.9",
-    lon: "32.8",
-    depth: "10",
-    time: String(Date.now()),
-    open_alarm: "true",
-    source: "test"
-}
-        });
-
-        console.log("✅ TEST ALARM GÖNDERİLDİ");
-        res.send("🚨 Test gönderildi (ID dahil)");
-
-    } catch (e) {
-        console.error("❌ TEST HATA:", e);
-        res.send("Hata: " + e.message);
-    }
-});
-// =============================================================================
-// 🌟 FLUTTER HARİTA VE LİSTE API ENDPOINT'LERİ (VERİ KAYBI OLMADAN EKLE)
-// =============================================================================
-
-// Kandilli Verisini Uygulamanın Okuyabileceği Şekilde Temizleyen Yardımcı Fonksiyon
 function cleanKandilliData(data) {
     return (data || []).map(eq => {
         try {
@@ -582,6 +360,7 @@ function cleanKandilliData(data) {
 
             return {
                 ...eq,
+                id: eq.id, // Servisteki temiz MD5 hash id yapısını bozma
                 mag: mag,
                 magnitude: mag,
                 latitude: lat,
@@ -592,50 +371,33 @@ function cleanKandilliData(data) {
                 depth: depth,
                 title: cleanPlace,
                 place: cleanPlace,
-                date: eq.date || eq.created_at || new Date().toISOString(),
+                date: eq.date || new Date().toISOString(),
                 geojson: eq.geojson ? eq.geojson : {
                     type: "Point",
                     coordinates: [lon, lat, depth]
                 }
             };
         } catch (e) {
-            return eq; // Hata durumunda ham veriyi bozma
+            return eq;
         }
     });
 }
 
-// 🗺️ Haritanın İstek Attığı Kritik Kandilli Rotası
 app.get("/api/kandilli", async (req, res) => {
     try {
-        // Kendi iç servisinden ham veriyi çekiyorsun
         const data = await getKandilliDepremler();
         const cleaned = cleanKandilliData(data);
-
-        res.setHeader("Content-Type", "application/json");
-        res.json({
-            status: true,        
-            source: "kandilli",
-            count: cleaned.length,
-            result: cleaned    
-        }); 
+        res.json({ status: true, source: "kandilli", count: cleaned.length, result: cleaned }); 
     } catch (err) {
-        console.error("❌ API Kandilli Rotası Hatası:", err);
-        res.status(500).json({ 
-            status: false, 
-            error: err.message,
-            result: [] 
-        });
+        res.status(500).json({ status: false, error: err.message, result: [] });
     }
 });
 
-// 🌍 Alternatif Olarak Uygulama USGS İsterse Diye Güvenlik Rotası
 app.get("/api/usgs", async (req, res) => {
     try {
         const response = await fetch("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson");
         const json = await response.json();
-        const features = json.features || [];
-        
-        const cleaned = features.map(eq => {
+        const cleaned = (json.features || []).map(eq => {
             const [lon, lat, depth] = eq.geometry.coordinates;
             return {
                 id: `usgs_${eq.id}`,
@@ -653,15 +415,14 @@ app.get("/api/usgs", async (req, res) => {
                 date: new Date(eq.properties.time).toISOString()
             };
         });
-
         res.json({ status: true, source: "usgs", count: cleaned.length, result: cleaned });
     } catch (err) {
         res.status(500).json({ status: false, error: err.message, result: [] });
     }
 });
-// ======================
-const PORT = process.env.PORT || 10000;
 
-app.listen(PORT, "0.0.0.0", () => {
-    console.log(`🚀 Server ${PORT} portunda`);
-});
+app.get("/", (req, res) => res.send("Deprem Servisi Aktif 🚀"));
+app.get("/health", (req, res) => res.json({ status: "ok", processing: isProcessing, time: new Date() }));
+
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, "0.0.0.0", () => console.log(`🚀 Server ${PORT} portunda aktif.`));
