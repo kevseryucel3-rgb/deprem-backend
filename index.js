@@ -1,24 +1,3 @@
-**Hayır, mevcut `index.js` kodun şu haliyle `main.dart` içindeki kullanıcının seçtiği filtreleri tam olarak OKUMUYOR.** Daha açık anlatmak gerekirse: `index.js` veritabanından kullanıcının filtrelerini (`minMag`, `maxDist` vb.) çekiyor fakat bu filtreleri sadece **`sendAlarmFlag` (open_alarm)** durumuna karar vermek için kullanıyor.
-
-Burada bildirimlerin (Push Notification) gelmesini engelleyen **3 büyük senkronizasyon ve mantık hatası** var. Bunları düzeltmezsen `main.dart` tarafındaki filtrelerin ne olursa olsun sunucu bildirimleri yanlış kişilere gönderecek veya tamamen engelleyecektir:
-
----
-
-### 🚨 Mevcut `index.js` Kodundaki Hatalar Neler?
-
-1. **Ücretsiz Kullanıcı Filtresi Sabit Kalmış:** `index.js` içinde ücretsiz bir kullanıcı için mesafe filtresi statik olarak `1200 km` ve `2.0 şiddet` olarak kilitlenmiş. Kullanıcı `main.dart` üzerinde filtresini değiştirse bile sunucu bunu tamamen görmezden geliyor.
-2. **Kandilli Zaman Formatı Hatası (`NaN` Riski):**
-Kandilli döngüsünde `time: String(eq.time || Date.now())` gönderiyorsun. Ancak Kandilli verisinde `time` diye bir alan yoktur, `date` veya `date_time` vardır. Bu yüzden `quakeTime` sürekli milisaniye cinsinden (`Date.now()`) gidiyor, bu da `main.dart` tarafında zamanı parse ederken sorun çıkarabilir.
-3. **`open_alarm` Mantığı Sadece Premium'a Bağlanmış:**
-Kodunda ücretsiz kullanıcılar için `sendAlarmFlag = true;` yapacak hiçbir alan yok. Eğer ücretsiz kullanıcılara belirli limitlerde (Örn: 4.5 üzeri) alarm çaldırmak istiyorsan, sunucu burayı her zaman `false` döndüğü için `main.dart` alarmı asla tetiklemeyecektir.
-
----
-
-### 🛠️ Kesin Çözüm: Tam Uyumlu `index.js`
-
-Hem `main.dart` (Flutter background handler) içindeki filtre mantığıyla %100 senkronize çalışan hem de veri yapılarını koruyan **tamamen düzeltilmiş `index.js` kodun aşağıdadır.** Mevcut sunucu kodunu bununla tamamen değiştirebilirsin:
-
-```javascript
 console.log("🔥 VERSION: FINAL-PRODUCTION-FIXED");
 
 const admin = require("firebase-admin");
