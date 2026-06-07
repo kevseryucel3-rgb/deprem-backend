@@ -222,38 +222,37 @@ async function sendNotification(eq) {
 
     if (!sendNotificationFlag) return;
 
-    messages.push({
-      token: user.token,
-      data: {
-        title: `${mag.toFixed(1)} Deprem`,
-        body: `${place} - ${distance} km - ${depth} km`,
-        place,
-        mag: String(mag),
-        lat: String(lat),
-        lon: String(lon),
-        depth: String(depth),
-        distance: String(distance),
-        source,
-        time: quakeTime,
-        open_alarm: sendAlarmFlag ? "true" : "false",
-      },
-      android: {
-        priority: "high",
-      },
-    });
-  });
+   messages.push({
+  token: user.token,
 
-  for (let i = 0; i < messages.length; i += 500) {
-    const chunk = messages.slice(i, i + 500);
-    try {
-      const result = await admin.messaging().sendEach(chunk);
-      console.log(`FCM sonuc: ${result.successCount}/${chunk.length}`);
-    } catch (error) {
-      console.error("FCM hata:", error.message);
-    }
-  }
-}
+  notification: {
+    title: `${mag.toFixed(1)} Deprem`,
+    body: `${place} - ${distance} km - ${depth} km`,
+  },
 
+  data: {
+    title: `${mag.toFixed(1)} Deprem`,
+    body: `${place} - ${distance} km - ${depth} km`,
+    place,
+    mag: String(mag),
+    lat: String(lat),
+    lon: String(lon),
+    depth: String(depth),
+    distance: String(distance),
+    source,
+    time: quakeTime,
+    open_alarm: sendAlarmFlag ? "true" : "false",
+  },
+
+  android: {
+    priority: "high",
+    notification: {
+      channelId: "earthquake_channel",
+      priority: "max",
+      defaultSound: true,
+    },
+  },
+});
 async function checkEarthquakes() {
   if (Date.now() - lastRun < CHECK_INTERVAL_MS) return;
   if (isProcessing) return;
