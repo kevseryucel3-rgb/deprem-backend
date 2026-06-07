@@ -422,7 +422,30 @@ app.get("/health", (req, res) => {
         time: new Date()
     });
 });
+app.get("/kandilli", async (req, res) => {
+    try {
+        const response = await fetch(
+            "https://api.orhanaydogdu.com.tr/deprem/kandilli/live",
+            {
+                headers: {
+                    "User-Agent": "Mozilla/5.0"
+                }
+            }
+        );
 
+        const data = await response.json();
+
+        res.json(data);
+
+    } catch (err) {
+        console.error("❌ KANDILLI ENDPOINT HATASI:", err.message);
+
+        res.status(500).json({
+            status: false,
+            error: err.message
+        });
+    }
+});
 // ======================
 // 🧪 TEST ENDPOINT
 // ======================
