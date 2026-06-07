@@ -425,7 +425,7 @@ app.get("/health", (req, res) => {
 app.get("/kandilli", async (req, res) => {
     try {
         const response = await fetch(
-            "https://api.orhanaydogdu.com.tr/deprem/kandilli/live",
+            "https://deprem-backend-hqbp.onrender.com/api/earthquakes",
             {
                 headers: {
                     "User-Agent": "Mozilla/5.0"
@@ -438,7 +438,7 @@ app.get("/kandilli", async (req, res) => {
         res.json(data);
 
     } catch (err) {
-        console.error("❌ KANDILLI ENDPOINT HATASI:", err.message);
+        console.error("❌ KENDI API ENDPOINT HATASI:", err.message);
 
         res.status(500).json({
             status: false,
