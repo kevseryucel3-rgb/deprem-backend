@@ -557,7 +557,108 @@ if (!testUser.token) {
         res.send("Hata: " + e.message);
     }
 });
+// =============================================================================
+// 🌟 FLUTTER HARİTA VE LİSTE API ENDPOINT'LERİ (VERİ KAYBI OLMADAN EKLE)
+// =============================================================================
 
+// Kandilli Verisini Uygulamanın Okuyabileceği Şekilde Temizleyen Yardımcı Fonksiyon
+function cleanKandilliData(data) {
+    return (data || []).map(eq => {
+        try {
+            const mag = parseFloat(eq.mag || eq.ml || eq.md || 0);
+            const lat = Number(eq.geojson?.coordinates?.[1] || eq.lat || 0);
+            const lon = Number(eq.geojson?.coordinates?.[0] || eq.lng || eq.lon || 0);
+            const depth = Number(eq.depth || 0);
+
+            let cleanPlace = eq.title || eq.location || eq.region || "Türkiye";
+            cleanPlace = cleanPlace
+                .replace(/^ML\s*\d+(\.\d+)?\s*-\s*/i, "")
+                .replace(/^\d+(\.\d+)?\s*-\s*/i, "")
+                .trim();
+
+            if (!cleanPlace || cleanPlace.length < 3) {
+                cleanPlace = `${lat.toFixed(2)}, ${lon.toFixed(2)}`;
+            }
+
+            return {
+                ...eq,
+                mag: mag,
+                magnitude: mag,
+                latitude: lat,
+                lat: lat,
+                longitude: lon,
+                lon: lon,
+                lng: lon, 
+                depth: depth,
+                title: cleanPlace,
+                place: cleanPlace,
+                date: eq.date || eq.created_at || new Date().toISOString(),
+                geojson: eq.geojson ? eq.geojson : {
+                    type: "Point",
+                    coordinates: [lon, lat, depth]
+                }
+            };
+        } catch (e) {
+            return eq; // Hata durumunda ham veriyi bozma
+        }
+    });
+}
+
+// 🗺️ Haritanın İstek Attığı Kritik Kandilli Rotası
+app.get("/api/kandilli", async (req, res) => {
+    try {
+        // Kendi iç servisinden ham veriyi çekiyorsun
+        const data = await getKandilliDepremler();
+        const cleaned = cleanKandilliData(data);
+
+        res.setHeader("Content-Type", "application/json");
+        res.json({
+            status: true,        
+            source: "kandilli",
+            count: cleaned.length,
+            result: cleaned    
+        }); 
+    } catch (err) {
+        console.error("❌ API Kandilli Rotası Hatası:", err);
+        res.status(500).json({ 
+            status: false, 
+            error: err.message,
+            result: [] 
+        });
+    }
+});
+
+// 🌍 Alternatif Olarak Uygulama USGS İsterse Diye Güvenlik Rotası
+app.get("/api/usgs", async (req, res) => {
+    try {
+        const response = await fetch("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson");
+        const json = await response.json();
+        const features = json.features || [];
+        
+        const cleaned = features.map(eq => {
+            const [lon, lat, depth] = eq.geometry.coordinates;
+            return {
+                id: `usgs_${eq.id}`,
+                source: "usgs",
+                mag: Number(eq.properties.mag || 0),
+                magnitude: Number(eq.properties.mag || 0),
+                lat: lat,
+                latitude: lat,
+                lon: lon,
+                longitude: lon,
+                lng: lon,
+                depth: Math.round(depth || 0),
+                place: eq.properties.place || "Global Deprem",
+                title: eq.properties.place || "Global Deprem",
+                date: new Date(eq.properties.time).toISOString()
+            };
+        });
+
+        res.json({ status: true, source: "usgs", count: cleaned.length, result: cleaned });
+    } catch (err) {
+        res.status(500).json({ status: false, error: err.message, result: [] });
+    }
+});
 // ======================
 const PORT = process.env.PORT || 10000;
 
