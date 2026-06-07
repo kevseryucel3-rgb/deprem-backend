@@ -4,7 +4,7 @@ const admin = require("firebase-admin");
 const cron = require("node-cron");
 const express = require("express");
 const fetch = require("node-fetch");
-
+const { getKandilliDepremler } = require("./services/kandilliService");
 const app = express();
 
 // ======================
