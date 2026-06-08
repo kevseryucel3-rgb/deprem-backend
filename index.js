@@ -299,18 +299,30 @@ async function checkEarthquakes() {
         console.log(`📡 Veri Çekildi -> USGS: ${usgsList.length} | Kandilli: ${kandilliList.length}`);
 
         // 🌍 USGS İŞLEME
+      // 🌍 USGS İŞLEME (FİLTRE DEĞİŞİKLİKLERİNE UYUMLU, DİNAMİK ID YAPISI)
         for (const eq of usgsList) {
-            const [lon, lat, depthRaw] = eq.geometry.coordinates;
-            const mag = Number(eq.properties.mag || 0);
-            const id = `usgs_${eq.id}`;
-            
-            const sent = await checkAndMarkSent(id, mag);
-            if (!sent) {
-                await sendNotification({
-                    ...eq,
-                    geometry: { coordinates: [lon, lat, depthRaw] },
-                    properties: { ...eq.properties, source: "usgs" }
-                });
+            try {
+                const [lon, lat, depthRaw] = eq.geometry.coordinates;
+                const mag = Number(eq.properties.mag || 0);
+                
+                // 🔒 USGS statik ID'sinin yanına depremin tam zamanını ekleyerek 
+                // geçmiş turlardaki kilitlenmeyi kırıyoruz.
+                const quakeTime = eq.properties.time || Date.now();
+                const id = `usgs_${eq.id}_${quakeTime}`;
+                
+                // Firestore doküman ismi için karakter temizliği
+                const finalDocId = id.replace(/[^a-zA-Z0-9_-]/g, "_");
+                
+                const sent = await checkAndMarkSent(finalDocId, mag);
+                if (!sent) {
+                    await sendNotification({
+                        ...eq,
+                        geometry: { coordinates: [lon, lat, depthRaw] },
+                        properties: { ...eq.properties, source: "usgs" }
+                    });
+                }
+            } catch (err) {
+                console.error("❌ Tekil USGS Satır Hatası:", err.message);
             }
         }
 
