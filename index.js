@@ -253,10 +253,6 @@ async function sendNotification(eq) {
     }
 }
 
-let lastRun = 0;
-let lastKandilliId = ""; 
-let lastUsgsId = ""; 
-
 async function checkEarthquakes() {
     const NOW = Date.now();
     
