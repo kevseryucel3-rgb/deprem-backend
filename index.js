@@ -33,7 +33,7 @@ const db = admin.firestore();
 // ======================
 let isProcessing = false;
 let lastRun = 0;
-
+let lastKandilliId = "";
 // ======================
 // 📏 MESAFE HESAPLAMA (Haversine Formülü)
 // ======================
@@ -253,24 +253,15 @@ async function sendNotification(eq) {
     }
 }
 
-// ======================
-// 🔍 ANA DÖNGÜ (LOOP)
-// ======================
-// ======================
-// 🔍 ANA DÖNGÜ (LOOP) - 45 SANİYE KORUMALI VE KİLİTLİ
-// ======================
-// ======================
-// 🔍 ANA DÖNGÜ (LOOP) - SADELEŞTİRİLMİŞ
-// ======================
+let lastRun = 0;
+let lastKandilliId = ""; 
+let lastUsgsId = ""; 
+
 async function checkEarthquakes() {
     const NOW = Date.now();
     
-    // 🔒 1. KORUMA: Eğer son çalışmanın üzerinden 43 saniye geçmediyse çalıştırma
-    if (NOW - lastRun < 43000) {
-        return; 
-    }
-
-    // Zaman kilitini güncelle
+    // 🔒 1. KORUMA: 43 saniye kuralı
+    if (NOW - lastRun < 43000) return;
     lastRun = NOW;
 
     try {
@@ -282,7 +273,7 @@ async function checkEarthquakes() {
         ]);
 
         if (!usgsRes) {
-            console.error("⚠️ USGS API'sine erişilemedi.");
+            console.error("⚠️ USGS API erişim hatası.");
             return;
         }
 
@@ -292,64 +283,56 @@ async function checkEarthquakes() {
 
         console.log(`📡 Veri Çekildi -> USGS: ${usgsList.length} | Kandilli: ${kandilliList.length}`);
 
-        // 🌍 USGS İŞLEME
-        for (const eq of usgsList) {
-            try {
-                const [lon, lat, depthRaw] = eq.geometry.coordinates;
-                const mag = Number(eq.properties.mag || 0);
-                const quakeTime = eq.properties.time || Date.now();
-                const id = `usgs_${eq.id}_${quakeTime}`;
-                const finalDocId = id.replace(/[^a-zA-Z0-9_-]/g, "_");
-                
-                const sent = await checkAndMarkSent(finalDocId, mag);
-                if (!sent) {
-                    await sendNotification({
-                        ...eq,
-                        geometry: { coordinates: [lon, lat, depthRaw] },
-                        properties: { ...eq.properties, source: "usgs" }
-                    });
-                }
-            } catch (err) {
-                console.error("❌ Tekil USGS Satır Hatası:", err.message);
+        // 🛡️ 1. KANDİLLİ İŞLEME (Akıllı Kontrol)
+        const latestKandilliId = kandilliList.length > 0 ? kandilliList[0].id : "";
+        if (latestKandilliId !== lastKandilliId && latestKandilliId !== "") {
+            lastKandilliId = latestKandilliId;
+            console.log("🚨 Yeni Kandilli verisi tespit edildi, işleniyor...");
+            
+            for (const eq of kandilliList) {
+                try {
+                    const mag = parseFloat(eq.mag);
+                    if (isNaN(mag)) continue;
+                    const finalDocId = String(eq.id).replace(/[^a-zA-Z0-9_-]/g, "_");
+                    
+                    const sent = await checkAndMarkSent(finalDocId, mag);
+                    if (!sent) {
+                        await sendNotification({ 
+                            properties: { mag, place: eq.title, source: "kandilli", date: eq.date }, 
+                            geometry: { coordinates: [eq.lon, eq.lat, eq.depth] }
+                        });
+                    }
+                } catch (err) { console.error("❌ Kandilli Satır Hatası:", err.message); }
             }
+        } else {
+            console.log("✅ Kandilli için yeni veri yok, atlandı.");
         }
 
-        // 🇹🇷 KANDİLLİ İŞLEME
-        for (const eq of kandilliList) {
-            try {
-                const mag = parseFloat(eq.mag);
-                if (isNaN(mag)) continue;
-
-                const lat = Number(eq.lat);
-                const lon = Number(eq.lon);
-                const depth = Number(eq.depth || 0);
-
-                if (!lat || !lon) continue;
-
-                const safeLatStr = String(lat).replace(/[^0-9]/g, "");
-                const safeLonStr = String(lon).replace(/[^0-9]/g, "");
-                const fallbackId = `kandilli_${safeLatStr}_${safeLonStr}`;
-                const id = eq.id ? String(eq.id) : fallbackId;
-                const finalDocId = id.replace(/[^a-zA-Z0-9_-]/g, "_");
-                
-                const sent = await checkAndMarkSent(finalDocId, mag);
-
-                if (!sent) {
-                    await sendNotification({
-                        properties: {
-                            mag: mag,
-                            place: eq.title,
-                            source: "kandilli",
-                            date: eq.date
-                        },
-                        geometry: {
-                            coordinates: [lon, lat, depth]
-                        }
-                    });
-                }
-            } catch (err) {
-                console.error("❌ Tekil Kandilli Satır Hatası:", err.message);
+        // 🛡️ 2. USGS İŞLEME (Akıllı Kontrol)
+        const latestUsgsId = usgsList.length > 0 ? usgsList[0].id : "";
+        if (latestUsgsId !== lastUsgsId && latestUsgsId !== "") {
+            lastUsgsId = latestUsgsId;
+            console.log("🚨 Yeni USGS verisi tespit edildi, işleniyor...");
+            
+            for (const eq of usgsList) {
+                try {
+                    const [lon, lat, depthRaw] = eq.geometry.coordinates;
+                    const mag = Number(eq.properties.mag || 0);
+                    const id = `usgs_${eq.id}_${eq.properties.time}`;
+                    const finalDocId = id.replace(/[^a-zA-Z0-9_-]/g, "_");
+                    
+                    const sent = await checkAndMarkSent(finalDocId, mag);
+                    if (!sent) {
+                        await sendNotification({ 
+                            ...eq, 
+                            geometry: { coordinates: [lon, lat, depthRaw] }, 
+                            properties: { ...eq.properties, source: "usgs" }
+                        });
+                    }
+                } catch (err) { console.error("❌ USGS Satır Hatası:", err.message); }
             }
+        } else {
+            console.log("✅ USGS için yeni veri yok, atlandı.");
         }
 
     } catch (e) {
