@@ -256,24 +256,47 @@ async function sendNotification(eq) {
 // ======================
 // 🔍 ANA DÖNGÜ (LOOP)
 // ======================
+// ======================
+// 🔍 ANA DÖNGÜ (LOOP) - 45 SANİYE KORUMALI VE KİLİTLİ
+// ======================
 async function checkEarthquakes() {
-    if (Date.now() - lastRun < 15000) return;
-    if (isProcessing) return;
+    const NOW = Date.now();
+    
+    // 🔒 1. KORUMA: Eğer son çalışmanın üzerinden 43 saniye geçmediyse ASLA çalıştırma
+    if (NOW - lastRun < 43000) {
+        return; 
+    }
 
-    lastRun = Date.now();
+    // 🔒 2. KORUMA: Eğer içeride hâlâ devam eden bir asenkron işlem varsa ASLA ikinciyi başlatma
+    if (isProcessing) {
+        console.log("⏳ İşlem hâlâ devam ediyor, yeni tarama engellendi.");
+        return;
+    }
+
+    // Milleri ve kilidi hemen işlemin başında kitle
     isProcessing = true;
+    lastRun = NOW;
 
     try {
+        console.log("🔄 [CRON] 45 saniyelik yeni deprem taraması başlatıldı...");
+
         const [usgsRes, kandilliRawList] = await Promise.all([
-            fetch("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson"),
-            getKandilliDepremler()
+            fetch("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson").catch(() => null),
+            getKandilliDepremler().catch(() => [])
         ]);
+
+        // API çökmelerine karşı güvenlik koruması
+        if (!usgsRes) {
+            console.error("⚠️ USGS API'sine erişilemedi, bu tur atlanıyor.");
+            isProcessing = false;
+            return;
+        }
 
         const usgs = await usgsRes.json();
         const usgsList = usgs.features || [];
         const kandilliList = cleanKandilliData(kandilliRawList);
 
-        console.log(`📡 Tarama Yapıldı -> USGS: ${usgsList.length} | Kandilli: ${kandilliList.length}`);
+        console.log(`📡 Veri Çekildi -> USGS: ${usgsList.length} | Kandilli: ${kandilliList.length}`);
 
         // 🌍 USGS İŞLEME
         for (const eq of usgsList) {
@@ -291,7 +314,7 @@ async function checkEarthquakes() {
             }
         }
 
-        // 🇹🇷 KANDİLLİ İŞLEME
+       // 🇹🇷 KANDİLLİ İŞLEME (HER SANİYE GÖNDERİMİ ENGELLEYEN GÜVENLİ DÖNGÜ)
         for (const eq of kandilliList) {
             try {
                 const mag = parseFloat(eq.mag);
@@ -303,11 +326,19 @@ async function checkEarthquakes() {
 
                 if (!lat || !lon) continue;
 
-                // 🔥 CRITICAL FIX: kandilliService.js'den gelen güvenli temiz ID'yi kullanıyoruz!
-                // Noktalı eski manuel string üretimini silerek entegrasyon sağladık.
-                const id = eq.id || `kandilli_${lat}_${lon}_${mag}`;
+                // 🔒 Nokta ve geçersiz karakter içermeyen, tamamen güvenli yedek ID üretimi
+                const safeLatStr = String(lat).replace(/[^0-9]/g, "");
+                const safeLonStr = String(lon).replace(/[^0-9]/g, "");
+                const safeMagStr = String(mag).replace(/[^0-9]/g, "");
                 
-                const sent = await checkAndMarkSent(id, mag);
+                // Eğer servisten temiz bir id geldiyse onu kullan, gelmediyse noktasız garantici ID'yi bas
+                const fallbackId = `kandilli_${safeLatStr}_${safeLonStr}_${safeMagStr}`;
+                const id = eq.id ? String(eq.id) : fallbackId;
+                
+                // Firestore Transaction'a sokmadan önce ID'yi bir kez daha sanitize et
+                const finalDocId = id.replace(/[^a-zA-Z0-9_-]/g, "_");
+                
+                const sent = await checkAndMarkSent(finalDocId, mag);
 
                 if (!sent) {
                     await sendNotification({
@@ -327,12 +358,14 @@ async function checkEarthquakes() {
             }
         }
 
-    } catch (e) {
+    } catch (e) { // Ana try bloğunun güvenli kapanışı ve yakalaması
         console.error("❌ GENEL LOOP HATASI:", e.message);
     } finally {
-        isProcessing = false; // Sistem kilitlenmesini engeller.
+        // İşlem tamamen bittiğinde kilidi kaldır ki bir sonraki 45. saniyede çalışabilsin
+        isProcessing = false; 
+        console.log("🏁 Tarama turu güvenli bir şekilde tamamlandı, kilit açıldı.");
     }
-}
+} // checkEarthquakes fonksiyonunun ana kapanış parantezi
 
 // ======================
 cron.schedule("*/45 * * * * *", checkEarthquakes);
