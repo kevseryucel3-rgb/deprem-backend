@@ -1,13 +1,12 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
-const crypto = require("crypto"); // Güvenli ve noktasız benzersiz ID üretmek için
+const crypto = require("crypto");
 const iconv = require("iconv-lite");
 
 const KANDILLI_URL = "http://www.koeri.boun.edu.tr/scripts/lst0.asp";
 
 // Büyüklükleri sırasıyla (hangisi doluysa) en doğru şekilde çeken fonksiyon
 function parseMagnitude(md, ml, mw) {
-  // Önce sayıya çevrilebilir olanları buluyoruz, -.- gibi ifadeleri eliyoruz
   const parseValue = (val) => {
     if (!val || val.includes("-")) return null;
     const num = parseFloat(val.replace(",", "."));
@@ -18,13 +17,10 @@ function parseMagnitude(md, ml, mw) {
   const numMl = parseValue(ml);
   const numMd = parseValue(md);
 
-  // Kandilli'de öncelik sırası genelde ML (Yerel Büyüklük) veya hangisi varsa odur.
-  // En yüksek ve geçerli olan büyüklüğü seçiyoruz ki bildirimler kaçmasın.
   return numMl || numMw || numMd || 0;
 }
 
 function parseLine(line) {
-  // Kandilli'nin txt formatını kusursuz ayrıştıran Regex satırı
   const match = line.match(
     /^(\d{4}\.\d{2}\.\d{2})\s+(\d{2}:\d{2}:\d{2})\s+([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(.+?)\s{2,}/
   );
@@ -38,7 +34,6 @@ function parseLine(line) {
   const depth = parseFloat(rawDepth);
   const magnitude = parseMagnitude(md, ml, mw);
 
-  // Kritik Veri Güvenliği Filtresi
   if (isNaN(latitude) || isNaN(longitude) || magnitude <= 0) {
     return null;
   }
@@ -47,15 +42,12 @@ function parseLine(line) {
   const dateTime = `${isoDate}T${rawTime}+03:00`;
   const place = rawPlace.trim().replace(/\s+/g, " ");
 
-  // 🔥 CRITICAL FIX: Firestore doküman ID'lerinde nokta (.) veya özel karakter olamaz!
-  // Tarih, saat ve koordinatları temiz bir string yapıp MD5 hash alarak 
-  // Firestore transaction'ın kilitlenmesini kesin olarak çözüyoruz.
   const rawIdString = `kandilli_${isoDate}_${rawTime.replace(/:/g, "")}_${latitude}_${longitude}`;
   const safeId = crypto.createHash("md5").update(rawIdString).digest("hex");
 
   return {
     earthquake_id: `kandilli_${safeId}`,
-    id: `kandilli_${safeId}`, // index.js'in "sent" koleksiyonunda aradığı ID formatı
+    id: `kandilli_${safeId}`,
     provider: "kandilli",
     source: "kandilli",
     date_time: dateTime,
@@ -83,9 +75,10 @@ async function getKandilliDepremler() {
   try {
     const response = await axios.get(KANDILLI_URL, {
       responseType: "arraybuffer",
-      timeout: 15000, // Render sunucuları yavaş kalmasın diye timeout'u 15 saniyeye çektik
+      timeout: 10000, // İstek süresini kısalttık (daha hızlı tepki için)
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Cache-Control": "no-cache" // Her zaman güncel veri çekilmesini sağlar
       },
     });
 
@@ -93,16 +86,24 @@ async function getKandilliDepremler() {
     const $ = cheerio.load(html);
     const rawText = $("pre").text();
 
-    if (!rawText) return [];
+    if (!rawText) throw new Error("Kandilli verisi boş geldi.");
 
+    // VERİ KORUMA: 
+    // 1. split ile satırları ayır
+    // 2. slice(0, 30) ile ilk 30 satırı al (sadece en güncel olanlar)
+    // 3. parseLine ile işle ve null olanları filtrele
     const earthquakes = rawText
       .split("\n")
+      .slice(0, 30) 
       .map((line) => parseLine(line))
       .filter(Boolean);
 
+    console.log(`✅ Kandilli verisi korumalı işlendi: ${earthquakes.length} adet deprem bulundu.`);
     return earthquakes;
+
   } catch (error) {
     console.error("❌ Kandilli servis çekim hatası:", error.message);
+    // Hata durumunda boş dizi dönerek ana döngünün çökmesini engelliyoruz
     return [];
   }
 }
