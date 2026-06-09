@@ -55,32 +55,38 @@ function getDistance(lat1, lon1, lat2, lon2) {
 // 🔒 MÜKERRER KONTROLÜ (Transaction Safe)
 // ======================
 async function checkAndMarkSent(id, mag) {
-    // Firestore doküman ID'lerinde nokta veya geçersiz karakter temizliği kontrolü
-    const safeDocId = id.replace(/[^a-zA-Z0-9_-]/g, "_");
-    const ref = db.collection("sent").doc(safeDocId);
+    // Firestore doküman ID'lerinde nokta veya geçersiz karakter temizliği kontrolü
+    const safeDocId = id.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const ref = db.collection("sent").doc(safeDocId);
 
-    return await db.runTransaction(async (tx) => {
-        const doc = await tx.get(ref);
+    return await db.runTransaction(async (tx) => {
+        const doc = await tx.get(ref);
 
-        if (doc.exists) {
-            const oldMag = doc.data().mag || 0;
-            if (oldMag === mag) return true;
+        if (doc.exists) {
+            const oldMag = doc.data().mag || 0;
+            if (oldMag === mag) return true;
 
-            tx.update(ref, {
-                mag,
-                time: admin.firestore.FieldValue.serverTimestamp()
-            });
+            tx.update(ref, {
+                mag,
+                time: admin.firestore.FieldValue.serverTimestamp(),
+                expiresAt: admin.firestore.Timestamp.fromDate(
+                    new Date(Date.now() + 3 * 24 * 60 * 60 * 1000)
+                )
+            });
 
-            return false;
-        }
+            return false;
+        }
 
-        tx.set(ref, {
-            mag,
-            time: admin.firestore.FieldValue.serverTimestamp()
-        });
+        tx.set(ref, {
+            mag,
+            time: admin.firestore.FieldValue.serverTimestamp(),
+            expiresAt: admin.firestore.Timestamp.fromDate(
+                new Date(Date.now() + 3 * 24 * 60 * 60 * 1000)
+            )
+        });
 
-        return false;
-    });
+        return false;
+    });
 }
 
 // ======================
