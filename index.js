@@ -266,10 +266,9 @@ async function checkEarthquakes() {
     const NOW = Date.now();
     
     // 🔒 1. KORUMA: Eğer son çalışmanın üzerinden 43 saniye geçmediyse çalıştırma
-    if (NOW - lastRun < 43000) {
-        return; 
-    }
-
+ if (NOW - lastRun < 25000) {
+    return;
+}
     // Zaman kilitini güncelle
     lastRun = NOW;
 
@@ -358,7 +357,7 @@ async function checkEarthquakes() {
 }
 
 // ======================
-cron.schedule("*/45 * * * * *", checkEarthquakes);
+cron.schedule("*/30 * * * * *", checkEarthquakes);
 
 // ======================
 // API ENDPOINTS & HELPERS
