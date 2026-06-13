@@ -120,6 +120,7 @@ async function cleanInvalidTokens(tokens) {
 
 // ======================
 // 🔔 BİLDİRİM GÖNDERİMİ
+// 🔔 BİLDİRİM GÖNDERİMİ
 async function sendNotification(eq) {
     const mag = Number(eq.properties.mag || 0);
     const place = String(eq.properties.place || "Deprem");
@@ -134,7 +135,7 @@ async function sendNotification(eq) {
         .where("pushActive", "==", true)
         .select(
             "token", "lat", "lon", "notificationsEnabled", "alarmEnabled",
-            "isPremium", "premiumUntil", "minMag", "maxDist", "alarmMag", "alarmDist"
+            "isPremium", "premiumUntil", "minMag", "maxDist"
         )
         .limit(2000)
         .get();
@@ -166,6 +167,7 @@ async function sendNotification(eq) {
         let sendNotificationFlag = false;
         let sendAlarmFlag = false;
 
+        // Premium kontrolü
         let isPremium = user.isPremium === true;
         if (user.premiumUntil) {
             try {
@@ -176,26 +178,24 @@ async function sendNotification(eq) {
         }
 
         if (isPremium) {
-            const notifMinMag = Number(user.minMag || 1);
-            const notifMaxDist = Number(user.maxDist || 500);
-            const alarmMinMag = Number(user.alarmMag ?? 4.5);
-            const alarmMaxDist = Number(user.alarmDist ?? 15000);
+            const minMag = Number(user.minMag || 1);
+            const maxDist = Number(user.maxDist || 500);
 
-            // Normal Kayan Bildirim
-            if (mag >= notifMinMag && distance <= notifMaxDist) {
+            // Normal kayan bildirim
+            if (mag >= minMag && distance <= maxDist) {
                 sendNotificationFlag = true;
             }
 
-            // ALARM (Tam ekran + sesli)
-            if (alarmEnabledGlobal && mag >= alarmMinMag && distance <= alarmMaxDist) {
+            // ALARM - Sadece premium ve alarmEnabled ise
+            if (alarmEnabledGlobal && mag >= minMag && distance <= maxDist) {
                 sendNotificationFlag = true;
                 sendAlarmFlag = true;
             }
         } else {
-            // Ücretsiz Kullanıcı - Sadece normal bildirim
-            if (mag >= 2.0 && distance <= 1200) {
+            // 🛑 ÜCRETSİZ KULLANICI - SADECE KAYAN BİLDİRİM
+            if (mag >= 1.0 && distance <= 15000) {
                 sendNotificationFlag = true;
-                sendAlarmFlag = false;
+                sendAlarmFlag = false;        // ← Kesinlikle alarm gönderme
             }
         }
 
@@ -206,8 +206,13 @@ async function sendNotification(eq) {
         const safeDistance = distance || 0;
         const safeDepth = depth || 0;
 
-        const payload = {
+        messages.push({
             token: user.token,
+            // Normal bildirim için notification payload
+            notification: {
+                title: `${safeMag.toFixed(1)} Deprem`,
+                body: `${safePlace} • ${safeDistance} km`
+            },
             data: {
                 title: `${safeMag.toFixed(1)} Deprem`,
                 body: `${safePlace} • ${safeDistance} km • ${safeDepth} km`,
@@ -219,30 +224,19 @@ async function sendNotification(eq) {
                 distance: String(safeDistance),
                 source: source,
                 time: String(quakeTime),
-                open_alarm: sendAlarmFlag ? "true" : "false"
+                open_alarm: sendAlarmFlag ? "true" : "false"   // Ücretsiz için her zaman false
             },
             android: {
-                priority: "high",
+                priority: sendAlarmFlag ? "max" : "high",
                 notification: {
                     channelId: sendAlarmFlag ? "earthquake_alarm_channel" : "earthquake_high_channel",
-                    priority: sendAlarmFlag ? "max" : "high",           // Alarm için max priority
+                    priority: sendAlarmFlag ? "max" : "high",
                     sound: "default",
                     defaultSound: true,
-                    visibility: "public",
-                    vibrateTimingsMillis: sendAlarmFlag ? [0, 500, 200, 500] : null
+                    visibility: "public"
                 }
             }
-        };
-
-        // ⚠️ ALARM İÇİN notification payload'unu kaldırıyoruz ki Flutter tarafı tam kontrol etsin
-        if (!sendAlarmFlag) {
-            payload.notification = {
-                title: `${safeMag.toFixed(1)} Deprem`,
-                body: `${safePlace} • ${safeDistance} km`
-            };
-        }
-
-        messages.push(payload);
+        });
     });
 
     if (messages.length === 0) return;
@@ -267,7 +261,7 @@ async function sendNotification(eq) {
                 await cleanInvalidTokens(invalidTokens);
             }
 
-            console.log(`✅ ${res.successCount} bildirim gönderildi, ${res.failureCount} başarısız.`);
+            console.log(`✅ ${res.successCount} bildirim gönderildi (${res.failureCount} başarısız)`);
         } catch (e) {
             console.error("❌ FCM Batch Hatası:", e.message);
         }
