@@ -4,9 +4,10 @@ const admin = require("firebase-admin");
 const cron = require("node-cron");
 const express = require("express");
 const fetch = require("node-fetch");
+const { google } = require("googleapis");
 const { getKandilliDepremler } = require("./services/kandilliService");
 const app = express();
-
+app.use(express.json());
 // ======================
 // 🌐 LOG
 // ======================
@@ -174,8 +175,9 @@ async function sendNotification(eq) {
         let sendAlarmFlag = false;
 
         // 🔥 PREMIUM KONTROLÜ
-        let isPremium = user.isPremium === true;
-        if (user.premiumUntil) {
+       let isPremium = false;
+
+if (user.premiumUntil) {
             try {
                 const until = user.premiumUntil.toDate();
                 isPremium = until > new Date();
@@ -184,27 +186,38 @@ async function sendNotification(eq) {
             }
         }
 
-        if (isPremium) {
-            const notifMinMag = Number(user.minMag || 1);
-            const notifMaxDist = Number(user.maxDist || 500);
-            const alarmMinMag = Number(user.alarmMag ?? 4.5);
-            const alarmMaxDist = Number(user.alarmDist ?? 15000);
-            const alarmEnabled = user.alarmEnabled === true;
+  if (isPremium) {
+    const notifMinMag = Number(user.minMag || 1);
+    const notifMaxDist = Number(user.maxDist || 500);
+    const alarmMinMag = Number(user.alarmMag ?? 4.5);
+    const alarmMaxDist = Number(user.alarmDist ?? 15000);
+    const alarmEnabled = user.alarmEnabled === true;
 
-            if (mag >= notifMinMag && distance <= notifMaxDist) {
-                sendNotificationFlag = true;
-            }
+    if (
+        notificationsEnabled &&
+        mag >= notifMinMag &&
+        distance <= notifMaxDist
+    ) {
+        sendNotificationFlag = true;
+    }
 
-            if (alarmEnabled && mag >= alarmMinMag && distance <= alarmMaxDist) {
-                sendNotificationFlag = true;
-                sendAlarmFlag = true;
-            }
-        } else {
-            // 🆓 ÜCRETSİZ KULLANICI FİLTRESİ
-            if (mag >= 2.0 && distance <= 1200) {
-                sendNotificationFlag = true;
-            }
-        }
+    if (
+        alarmEnabled &&
+        mag >= alarmMinMag &&
+        distance <= alarmMaxDist
+    ) {
+        sendNotificationFlag = true;
+        sendAlarmFlag = true;
+    }
+} else {
+    if (
+        notificationsEnabled &&
+        mag >= 2.0 &&
+        distance <= 1200
+    ) {
+        sendNotificationFlag = true;
+    }
+}
 
         if (!sendNotificationFlag) return;
 
@@ -450,6 +463,80 @@ app.get("/api/usgs", async (req, res) => {
 });
 
 app.get("/", (req, res) => res.send("Deprem Servisi Aktif 🚀"));
+app.post("/verify-google-purchase", async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization || "";
+        const idToken = authHeader.replace("Bearer ", "");
+
+        if (!idToken) {
+            return res.status(401).json({ error: "missing_token" });
+        }
+
+        const decoded = await admin.auth().verifyIdToken(idToken);
+        const uid = decoded.uid;
+
+        const { productId, purchaseToken } = req.body;
+
+        if (!productId || !purchaseToken) {
+            return res.status(400).json({ error: "missing_purchase_data" });
+        }
+
+        const validProducts = [
+            "deprem_premium_monthly",
+            "deprem_premium_yearly",
+        ];
+
+        if (!validProducts.includes(productId)) {
+            return res.status(400).json({ error: "invalid_product_id" });
+        }
+
+        const auth = new google.auth.GoogleAuth({
+            credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS),
+            scopes: ["https://www.googleapis.com/auth/androidpublisher"],
+        });
+
+        const androidpublisher = google.androidpublisher({
+            version: "v3",
+            auth,
+        });
+
+        const result = await androidpublisher.purchases.subscriptionsv2.get({
+            packageName: "com.alper.depremtakip",
+            token: purchaseToken,
+        });
+
+        const sub = result.data;
+        const expiryTime = sub.lineItems?.[0]?.expiryTime;
+
+        if (!expiryTime) {
+            return res.status(400).json({ error: "no_expiry_time" });
+        }
+
+        const expiryDate = new Date(expiryTime);
+        const premium = expiryDate > new Date();
+
+        await db.collection("users").doc(uid).set({
+            isPremium: premium,
+            premiumUntil: admin.firestore.Timestamp.fromDate(expiryDate),
+            googlePlay: {
+                productId,
+                purchaseToken,
+                subscriptionState: sub.subscriptionState || null,
+                latestOrderId: sub.latestOrderId || null,
+                verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+
+        return res.json({
+            premium,
+            premiumUntil: expiryDate.toISOString(),
+        });
+    } catch (e) {
+        console.error("verify-google-purchase error:", e);
+        return res.status(500).json({ error: e.message });
+    }
+});
 app.get("/health", (req, res) => res.json({ status: "ok", processing: isProcessing, time: new Date() }));
 
 const PORT = process.env.PORT || 10000;
