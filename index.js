@@ -191,7 +191,7 @@ async function sendNotification(eq) {
             }
         } else {
             // Ücretsiz Kullanıcı
-            if (mag >= 2.0 && distance <= 1200) {
+            if (mag >= 1.0 && distance <= 15000) {
                 sendNotificationFlag = true;
             }
         }
