@@ -122,6 +122,7 @@ async function cleanInvalidTokens(tokens) {
 // 🔔 BİLDİRİM GÖNDERİMİ
 // ======================
 // 🔔 BİLDİRİM GÖNDERİMİ
+// 🔔 BİLDİRİM GÖNDERİMİ
 async function sendNotification(eq) {
     const mag = Number(eq.properties.mag || 0);
     const place = String(eq.properties.place || "Deprem");
@@ -134,8 +135,17 @@ async function sendNotification(eq) {
 
     const snapshot = await db.collection("users")
         .where("pushActive", "==", true)
-        .select("token", "lat", "lon", "notificationsEnabled", "alarmEnabled",
-                "isPremium", "premiumUntil", "minMag", "maxDist", "alarmEnabled")
+        .select(
+            "token", 
+            "lat", 
+            "lon", 
+            "notificationsEnabled", 
+            "alarmEnabled",
+            "isPremium", 
+            "premiumUntil", 
+            "minMag", 
+            "maxDist"
+        )
         .limit(2000)
         .get();
 
@@ -158,6 +168,7 @@ async function sendNotification(eq) {
 
         const distance = getDistance(userLat, userLon, lat, lon);
 
+        // 🇹🇷 KANDİLLİ ÖZEL KURALI
         if (source === "kandilli") {
             const isTR = userLat >= 34 && userLat <= 44 && userLon >= 24 && userLon <= 47;
             if (!isTR) return;
@@ -166,6 +177,7 @@ async function sendNotification(eq) {
         let sendNotificationFlag = false;
         let sendAlarmFlag = false;
 
+        // Premium kontrolü
         let isPremium = user.isPremium === true;
         if (user.premiumUntil) {
             try {
@@ -179,20 +191,21 @@ async function sendNotification(eq) {
             const minMag = Number(user.minMag || 1);
             const maxDist = Number(user.maxDist || 500);
 
-            // Kayan Bildirim (Normal)
+            // Kayan (Normal) Bildirim
             if (mag >= minMag && distance <= maxDist) {
                 sendNotificationFlag = true;
             }
 
-            // Alarm Bildirimi (Aynı filtreye göre)
+            // ALARM BİLDİRİMİ - Sadece premium ve alarmEnabled açıksa
             if (alarmEnabledGlobal && mag >= minMag && distance <= maxDist) {
                 sendNotificationFlag = true;
                 sendAlarmFlag = true;
             }
         } else {
-            // Ücretsiz Kullanıcı
+            // 🆓 ÜCRETSİZ KULLANICI - SADECE KAYAN BİLDİRİM
             if (mag >= 1.0 && distance <= 15000) {
                 sendNotificationFlag = true;
+                sendAlarmFlag = false;   // Kesinlikle alarm olmasın
             }
         }
 
@@ -241,17 +254,24 @@ async function sendNotification(eq) {
         const batch = messages.slice(i, i + 500);
         try {
             const res = await admin.messaging().sendEach(batch);
-            const invalidTokens = res.responses
-                .filter(r => !r.success)
-                .filter(r => ["messaging/registration-token-not-registered", 
-                             "messaging/invalid-registration-token"].includes(r.error?.code))
-                .map((r, idx) => batch[idx].token);  // Düzeltme: idx batch'e göre
+
+            // Invalid token temizleme (güvenli index)
+            const invalidTokens = [];
+            res.responses.forEach((response, index) => {
+                if (!response.success) {
+                    const code = response.error?.code;
+                    if (code === "messaging/registration-token-not-registered" ||
+                        code === "messaging/invalid-registration-token") {
+                        invalidTokens.push(batch[index]?.token);
+                    }
+                }
+            });
 
             if (invalidTokens.length > 0) {
                 await cleanInvalidTokens(invalidTokens);
             }
 
-            console.log(`✅ ${res.successCount} bildirim gönderildi.`);
+            console.log(`✅ ${res.successCount} bildirim gönderildi, ${res.failureCount} başarısız.`);
         } catch (e) {
             console.error("❌ FCM Batch Hatası:", e.message);
         }
