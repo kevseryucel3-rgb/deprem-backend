@@ -216,7 +216,6 @@ async function sendNotification(eq) {
 messages.push({
             token: user.token,
             
-            // 🛠️ DÜZELTME: Uygulama arka plandayken yukarıdan kayan bildirimin düşmesini sağlayan kritik gövde
             notification: {
                 title: `${safeMag.toFixed(1)} Deprem`,
                 body: `${safePlace} • ${safeDistance} km`
@@ -236,13 +235,13 @@ messages.push({
                 open_alarm: sendAlarmFlag ? "true" : "false"
             },
             
-            // 🛠️ DÜZELTME: Android tarafında ekranın tepesinde belirmesi (Heads-up) için kanal ve öncelik ayarı
             android: {
-                priority: "high",
+                priority: "high", // Paketin acil ulaştırılması için
                 notification: {
-                    channelId: "earthquake_high_channel", // Dart kodundaki yüksek öncelikli kanal ismiyle eşleşmeli
-                    priority: "high",
-                    defaultSound: true,
+                    channelId: "earthquake_high_channel", // 📍 Dart/Flutter'daki kanal ID'si ile eşleşti
+                    priority: "high",                     // 📍 Heads-up (Tepede kayma) garantilendi
+                    sound: "default",                     // 📍 Android için ses çalma komutu aktif edildi
+                    defaultSound: true,                   // 📍 Sistem varsayılan bildirim sesini zorunlu kıldı
                     visibility: "public"
                 }
             }
