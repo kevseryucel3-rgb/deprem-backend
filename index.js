@@ -455,31 +455,45 @@ app.get("/api/kandilli", async (req, res) => {
 });
 
 app.get("/api/usgs", async (req, res) => {
-    try {
-        const response = await fetch("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson");
-        const json = await response.json();
-        const cleaned = (json.features || []).map(eq => {
-            const [lon, lat, depth] = eq.geometry.coordinates;
-            return {
-                id: `usgs_${eq.id}`,
-                source: "usgs",
-                mag: Number(eq.properties.mag || 0),
-                magnitude: Number(eq.properties.mag || 0),
-                lat: lat,
-                latitude: lat,
-                lon: lon,
-                longitude: lon,
-                lng: lon,
-                depth: Math.round(depth || 0),
-                place: eq.properties.place || "Global Deprem",
-                title: eq.properties.place || "Global Deprem",
-                date: new Date(eq.properties.time).toISOString()
-            };
-        });
-        res.json({ status: true, source: "usgs", count: cleaned.length, result: cleaned });
-    } catch (err) {
-        res.status(500).json({ status: false, error: err.message, result: [] });
-    }
+    try {
+        const response = await fetch("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson");
+        if (!response.ok) throw new Error("USGS kaynağına erişilemedi.");
+        
+        const json = await response.json();
+        const cleaned = (json.features || []).map(eq => {
+            const [lon, lat, depth] = eq.geometry.coordinates;
+            const mag = Number(eq.properties.mag || 0);
+            const safePlace = eq.properties.place || "Global Deprem";
+            const isoDate = new Date(eq.properties.time).toISOString();
+
+            return {
+                // 🛠️ DÜZELTME: Dart model kırılmalarını engellemek için Kandilli çıktı formatı ile tam uyumlu hale getirildi
+                id: eq.id, 
+                mag: mag,
+                ml: String(mag), 
+                magnitude: mag,
+                lat: lat,
+                latitude: lat,
+                lon: lon,
+                longitude: lon,
+                lng: lon,
+                depth: Math.round(depth || 0),
+                title: safePlace,
+                place: safePlace,
+                location: safePlace,
+                date: isoDate,
+                timestamp: eq.properties.time,
+                source: "usgs",
+                geojson: eq.geometry ? eq.geometry : {
+                    type: "Point",
+                    coordinates: [lon, lat, Math.round(depth || 0)]
+                }
+            };
+        });
+        res.json({ status: true, source: "usgs", count: cleaned.length, result: cleaned });
+    } catch (err) {
+        res.status(500).json({ status: false, error: err.message, result: [] });
+    }
 });
 
 app.get("/", (req, res) => res.send("Deprem Servisi Aktif 🚀"));
