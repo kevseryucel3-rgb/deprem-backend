@@ -4,9 +4,10 @@ const admin = require("firebase-admin");
 const cron = require("node-cron");
 const express = require("express");
 const fetch = require("node-fetch");
+const { google } = require("googleapis");
 const { getKandilliDepremler } = require("./services/kandilliService");
 const app = express();
-
+app.use(express.json());
 // ======================
 // 🌐 LOG
 // ======================
@@ -120,151 +121,170 @@ async function cleanInvalidTokens(tokens) {
 
 // ======================
 // 🔔 BİLDİRİM GÖNDERİMİ
-// 🔔 BİLDİRİM GÖNDERİMİ
-// 🔔 BİLDİRİM GÖNDERİMİ - DEBUG VERSİYONU
+// ======================
 async function sendNotification(eq) {
-    const mag = Number(eq.properties.mag || 0);
-    const place = String(eq.properties.place || "Deprem");
-    const source = eq.properties.source || "usgs";
-    const [lon, lat, depthRaw] = eq.geometry.coordinates;
-    const depth = Math.round(depthRaw || 0);
-    const quakeTime = eq.properties.time || eq.properties.timestamp || eq.properties.date || Date.now();
+    const mag = Number(eq.properties.mag || 0);
+    const place = String(eq.properties.place || "Deprem");
+    const source = eq.properties.source || "usgs";
 
-    console.log(`📨 [DEBUG] İşlem Başladı → ${source} | Mag: ${mag} | Yer: ${place}`);
+    const [lon, lat, depthRaw] = eq.geometry.coordinates;
+    const depth = Math.round(depthRaw || 0);
+    const quakeTime = eq.properties.time || eq.properties.timestamp || eq.properties.date || Date.now();
 
-    const snapshot = await db.collection("users")
-        .where("pushActive", "==", true)
-        .select("token", "lat", "lon", "notificationsEnabled", "alarmEnabled",
-                "isPremium", "premiumUntil", "minMag", "maxDist")
-        .limit(2000)
-        .get();
+    console.log(`📨 İşlem Başladı: ${source} | Şiddet: ${mag} | Yer: ${place}`);
 
-    const messages = [];
+    // Cihaz ayarlarını optimize etmek için projeye uygun limitlendirilmiş veri çekimi
+    const snapshot = await db.collection("users")
+        .where("pushActive", "==", true)
+        .select(
+            "token", "lat", "lon", "notificationsEnabled", "alarmEnabled",
+            "isPremium", "premiumUntil", "minMag", "maxDist", "alarmMag", "alarmDist"
+        )
+        .limit(2000)
+        .get();
 
-    snapshot.forEach(doc => {
-        const user = doc.data();
-        const userId = doc.id;
+    const messages = [];
 
-        if (!user.token) return;
+    snapshot.forEach(doc => {
+        const user = doc.data();
 
-        const notificationsEnabled = user.notificationsEnabled === true;
-        const alarmEnabledGlobal = user.alarmEnabled === true;
-        let isPremium = user.isPremium === true;
+        if (!user.token) return;
 
-        if (user.premiumUntil) {
-            try {
-                isPremium = user.premiumUntil.toDate() > new Date();
-            } catch (e) {
-                console.log(`⚠️ Premium parse hatası (${userId}):`, e.message);
-            }
-        }
+        const notificationsEnabled = user.notificationsEnabled === true;
+        const alarmEnabledGlobal = user.alarmEnabled === true;
 
-        console.log(`👤 Kullanıcı ${userId} | Premium: ${isPremium} | AlarmEnabled: ${alarmEnabledGlobal} | minMag: ${user.minMag} | maxDist: ${user.maxDist}`);
+        if (!notificationsEnabled && !alarmEnabledGlobal) return;
 
-        if (!notificationsEnabled && !alarmEnabledGlobal) return;
-        if (user.lat == null || user.lon == null) return;
+        if (user.lat === undefined || user.lon === undefined || user.lat === null || user.lon === null) {
+            return;
+        }
 
-        const userLat = Number(user.lat);
-        const userLon = Number(user.lon);
-        if (isNaN(userLat) || isNaN(userLon)) return;
+        const userLat = Number(user.lat);
+        const userLon = Number(user.lon);
+        if (isNaN(userLat) || isNaN(userLon)) return;
 
-        const distance = getDistance(userLat, userLon, lat, lon);
+        const distance = getDistance(userLat, userLon, lat, lon);
 
-        if (source === "kandilli" && !(userLat >= 34 && userLat <= 44 && userLon >= 24 && userLon <= 47)) {
-            return;
-        }
+        // 🇹🇷 KANDİLLİ ÖZEL KURALI: Türkiye sınırları dışında Kandilli bildirimi gönderilmez.
+        if (source === "kandilli") {
+            const isTR = userLat >= 34 && userLat <= 44 && userLon >= 24 && userLon <= 47; 
+            if (!isTR) return;
+        }
 
-        let sendNotificationFlag = false;
-        let sendAlarmFlag = false;
+        let sendNotificationFlag = false;
+        let sendAlarmFlag = false;
 
-        if (isPremium) {
-            const minMag = Number(user.minMag || 1);
-            const maxDist = Number(user.maxDist || 500);
+        // 🔥 PREMIUM KONTROLÜ
+       let isPremium = false;
 
-            if (mag >= minMag && distance <= maxDist) {
-                sendNotificationFlag = true;
-            }
+if (user.premiumUntil) {
+            try {
+                const until = user.premiumUntil.toDate();
+                isPremium = until > new Date();
+            } catch (e) {
+                console.log("⚠️ premiumUntil parse hatası:", e.message);
+            }
+        }
 
-            if (alarmEnabledGlobal && mag >= minMag && distance <= maxDist) {
-                sendNotificationFlag = true;
-                sendAlarmFlag = true;
-                console.log(`🚨 ALARM TETİKLENDİ → Kullanıcı: ${userId} | Mag: ${mag} | Mesafe: ${distance}km`);
-            }
-        } else {
-            if (mag >= 1.0 && distance <= 15000) {
-                sendNotificationFlag = true;
-                sendAlarmFlag = false;
-            }
-        }
+  if (isPremium) {
+    const notifMinMag = Number(user.minMag || 1);
+    const notifMaxDist = Number(user.maxDist || 500);
+    const alarmMinMag = Number(user.alarmMag ?? 4.5);
+    const alarmMaxDist = Number(user.alarmDist ?? 15000);
+    const alarmEnabled = user.alarmEnabled === true;
 
-        if (!sendNotificationFlag) return;
-
-        const safeMag = isNaN(mag) ? 0 : mag;
-        const safePlace = place && place.length > 2 ? place : "Bilinmeyen konum";
-        const safeDistance = distance || 0;
-        const safeDepth = depth || 0;
-
-        messages.push({
-            token: user.token,
-            notification: {
-                title: `${safeMag.toFixed(1)} Deprem`,
-                body: `${safePlace} • ${safeDistance} km`
-            },
-            data: {
-                title: `${safeMag.toFixed(1)} Deprem`,
-                body: `${safePlace} • ${safeDistance} km • ${safeDepth} km`,
-                place: safePlace,
-                mag: String(safeMag),
-                lat: String(lat),
-                lon: String(lon),
-                depth: String(safeDepth),
-                distance: String(safeDistance),
-                source: source,
-                time: String(quakeTime),
-                open_alarm: sendAlarmFlag ? "true" : "false"
-            },
-            android: {
-                priority: sendAlarmFlag ? "max" : "high",
-                notification: {
-                    channelId: sendAlarmFlag ? "earthquake_alarm_channel" : "earthquake_high_channel",
-                    priority: sendAlarmFlag ? "max" : "high",
-                    sound: "default",
-                    defaultSound: true,
-                    visibility: "public"
-                }
-            }
-        });
-    });
-
-    if (messages.length === 0) {
-        console.log("❌ Hiçbir kullanıcıya bildirim gönderilmedi.");
-        return;
+    if (
+        notificationsEnabled &&
+        mag >= notifMinMag &&
+        distance <= notifMaxDist
+    ) {
+        sendNotificationFlag = true;
     }
 
-    // ... (batch gönderme kısmı aynı kalabilir)
-    for (let i = 0; i < messages.length; i += 500) {
-        const batch = messages.slice(i, i + 500);
-        try {
-            const res = await admin.messaging().sendEach(batch);
-            console.log(`✅ Batch tamamlandı: ${res.successCount} başarılı, ${res.failureCount} başarısız`);
+    if (
+        alarmEnabled &&
+        mag >= alarmMinMag &&
+        distance <= alarmMaxDist
+    ) {
+        sendNotificationFlag = true;
+        sendAlarmFlag = true;
+    }
+} else {
+    if (
+        notificationsEnabled &&
+        mag >= 2.0 &&
+        distance <= 1200
+    ) {
+        sendNotificationFlag = true;
+    }
+}
 
-            // invalid token temizleme...
-            const invalidTokens = [];
-            res.responses.forEach((response, index) => {
-                if (!response.success) {
-                    const code = response.error?.code;
-                    if (code === "messaging/registration-token-not-registered" || 
-                        code === "messaging/invalid-registration-token") {
-                        invalidTokens.push(batch[index].token);
-                    }
-                }
-            });
+        if (!sendNotificationFlag) return;
 
-            if (invalidTokens.length > 0) await cleanInvalidTokens(invalidTokens);
-        } catch (e) {
-            console.error("❌ FCM Batch Hatası:", e.message);
+        const safeMag = isNaN(mag) ? 0 : mag;
+        const safePlace = place && place.length > 2 ? place : "Bilinmeyen konum";
+        const safeDistance = distance || 0;
+        const safeDepth = depth || 0;
+
+       messages.push({
+    token: user.token,
+
+    notification: {
+        title: `${safeMag.toFixed(1)} Deprem`,
+        body: `${safePlace} • ${safeDistance} km • ${safeDepth} km`
+    },
+
+    data: {
+        title: `${safeMag.toFixed(1)} Deprem`,
+        body: `${safePlace} • ${safeDistance} km • ${safeDepth} km`,
+        place: safePlace,
+        mag: String(safeMag),
+        lat: String(lat),
+        lon: String(lon),
+        depth: String(safeDepth),
+        distance: String(safeDistance),
+        source: source,
+        time: String(quakeTime),
+        open_alarm: sendAlarmFlag ? "true" : "false"
+    },
+
+    android: {
+        priority: "high",
+        notification: {
+            channelId: "earthquake_high_channel",
+            priority: "high",
+            defaultSound: true,
+            visibility: "public"
         }
     }
+});
+    });
+
+    if (messages.length === 0) return;
+
+    for (let i = 0; i < messages.length; i += 500) {
+        const batch = messages.slice(i, i + 500);
+        try {
+            const res = await admin.messaging().sendEach(batch);
+            const invalidTokens = [];
+            res.responses.forEach((r, idx) => {
+                if (!r.success) {
+                    const err = r.error?.code;
+                    if (err === "messaging/registration-token-not-registered" || 
+                        err === "messaging/invalid-registration-token") {
+                        invalidTokens.push(batch[idx].token);
+                    }
+                }
+            });
+            
+            if (invalidTokens.length > 0) {
+                await cleanInvalidTokens(invalidTokens);
+            }
+            console.log(`✅ ${res.successCount} adet bildirim başarıyla iletildi.`);
+        } catch (e) {
+            console.error("❌ FCM Batch Hatası:", e.message);
+        }
+    }
 }
 
 // ======================
@@ -458,6 +478,80 @@ app.get("/api/usgs", async (req, res) => {
 });
 
 app.get("/", (req, res) => res.send("Deprem Servisi Aktif 🚀"));
+app.post("/verify-google-purchase", async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization || "";
+        const idToken = authHeader.replace("Bearer ", "");
+
+        if (!idToken) {
+            return res.status(401).json({ error: "missing_token" });
+        }
+
+        const decoded = await admin.auth().verifyIdToken(idToken);
+        const uid = decoded.uid;
+
+        const { productId, purchaseToken } = req.body;
+
+        if (!productId || !purchaseToken) {
+            return res.status(400).json({ error: "missing_purchase_data" });
+        }
+
+        const validProducts = [
+            "deprem_premium_monthly",
+            "deprem_premium_yearly",
+        ];
+
+        if (!validProducts.includes(productId)) {
+            return res.status(400).json({ error: "invalid_product_id" });
+        }
+
+        const auth = new google.auth.GoogleAuth({
+            credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS),
+            scopes: ["https://www.googleapis.com/auth/androidpublisher"],
+        });
+
+        const androidpublisher = google.androidpublisher({
+            version: "v3",
+            auth,
+        });
+
+        const result = await androidpublisher.purchases.subscriptionsv2.get({
+            packageName: "com.alper.depremtakip",
+            token: purchaseToken,
+        });
+
+        const sub = result.data;
+        const expiryTime = sub.lineItems?.[0]?.expiryTime;
+
+        if (!expiryTime) {
+            return res.status(400).json({ error: "no_expiry_time" });
+        }
+
+        const expiryDate = new Date(expiryTime);
+        const premium = expiryDate > new Date();
+
+        await db.collection("users").doc(uid).set({
+            isPremium: premium,
+            premiumUntil: admin.firestore.Timestamp.fromDate(expiryDate),
+            googlePlay: {
+                productId,
+                purchaseToken,
+                subscriptionState: sub.subscriptionState || null,
+                latestOrderId: sub.latestOrderId || null,
+                verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+
+        return res.json({
+            premium,
+            premiumUntil: expiryDate.toISOString(),
+        });
+    } catch (e) {
+        console.error("verify-google-purchase error:", e);
+        return res.status(500).json({ error: e.message });
+    }
+});
 app.get("/health", (req, res) => res.json({ status: "ok", processing: isProcessing, time: new Date() }));
 
 const PORT = process.env.PORT || 10000;
