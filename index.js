@@ -121,6 +121,7 @@ async function cleanInvalidTokens(tokens) {
 // ======================
 // 🔔 BİLDİRİM GÖNDERİMİ
 // 🔔 BİLDİRİM GÖNDERİMİ
+// 🔔 BİLDİRİM GÖNDERİMİ - DEBUG VERSİYONU
 async function sendNotification(eq) {
     const mag = Number(eq.properties.mag || 0);
     const place = String(eq.properties.place || "Deprem");
@@ -129,14 +130,12 @@ async function sendNotification(eq) {
     const depth = Math.round(depthRaw || 0);
     const quakeTime = eq.properties.time || eq.properties.timestamp || eq.properties.date || Date.now();
 
-    console.log(`📨 İşlem Başladı: ${source} | Şiddet: ${mag} | Yer: ${place}`);
+    console.log(`📨 [DEBUG] İşlem Başladı → ${source} | Mag: ${mag} | Yer: ${place}`);
 
     const snapshot = await db.collection("users")
         .where("pushActive", "==", true)
-        .select(
-            "token", "lat", "lon", "notificationsEnabled", "alarmEnabled",
-            "isPremium", "premiumUntil", "minMag", "maxDist"
-        )
+        .select("token", "lat", "lon", "notificationsEnabled", "alarmEnabled",
+                "isPremium", "premiumUntil", "minMag", "maxDist")
         .limit(2000)
         .get();
 
@@ -144,13 +143,25 @@ async function sendNotification(eq) {
 
     snapshot.forEach(doc => {
         const user = doc.data();
+        const userId = doc.id;
+
         if (!user.token) return;
 
         const notificationsEnabled = user.notificationsEnabled === true;
         const alarmEnabledGlobal = user.alarmEnabled === true;
+        let isPremium = user.isPremium === true;
+
+        if (user.premiumUntil) {
+            try {
+                isPremium = user.premiumUntil.toDate() > new Date();
+            } catch (e) {
+                console.log(`⚠️ Premium parse hatası (${userId}):`, e.message);
+            }
+        }
+
+        console.log(`👤 Kullanıcı ${userId} | Premium: ${isPremium} | AlarmEnabled: ${alarmEnabledGlobal} | minMag: ${user.minMag} | maxDist: ${user.maxDist}`);
 
         if (!notificationsEnabled && !alarmEnabledGlobal) return;
-
         if (user.lat == null || user.lon == null) return;
 
         const userLat = Number(user.lat);
@@ -159,43 +170,30 @@ async function sendNotification(eq) {
 
         const distance = getDistance(userLat, userLon, lat, lon);
 
-        if (source === "kandilli") {
-            const isTR = userLat >= 34 && userLat <= 44 && userLon >= 24 && userLon <= 47;
-            if (!isTR) return;
+        if (source === "kandilli" && !(userLat >= 34 && userLat <= 44 && userLon >= 24 && userLon <= 47)) {
+            return;
         }
 
         let sendNotificationFlag = false;
         let sendAlarmFlag = false;
 
-        // Premium kontrolü
-        let isPremium = user.isPremium === true;
-        if (user.premiumUntil) {
-            try {
-                isPremium = user.premiumUntil.toDate() > new Date();
-            } catch (e) {
-                console.log("⚠️ premiumUntil parse hatası:", e.message);
-            }
-        }
-
         if (isPremium) {
             const minMag = Number(user.minMag || 1);
             const maxDist = Number(user.maxDist || 500);
 
-            // Normal kayan bildirim
             if (mag >= minMag && distance <= maxDist) {
                 sendNotificationFlag = true;
             }
 
-            // ALARM - Sadece premium ve alarmEnabled ise
             if (alarmEnabledGlobal && mag >= minMag && distance <= maxDist) {
                 sendNotificationFlag = true;
                 sendAlarmFlag = true;
+                console.log(`🚨 ALARM TETİKLENDİ → Kullanıcı: ${userId} | Mag: ${mag} | Mesafe: ${distance}km`);
             }
         } else {
-            // 🛑 ÜCRETSİZ KULLANICI - SADECE KAYAN BİLDİRİM
             if (mag >= 1.0 && distance <= 15000) {
                 sendNotificationFlag = true;
-                sendAlarmFlag = false;        // ← Kesinlikle alarm gönderme
+                sendAlarmFlag = false;
             }
         }
 
@@ -208,7 +206,6 @@ async function sendNotification(eq) {
 
         messages.push({
             token: user.token,
-            // Normal bildirim için notification payload
             notification: {
                 title: `${safeMag.toFixed(1)} Deprem`,
                 body: `${safePlace} • ${safeDistance} km`
@@ -224,7 +221,7 @@ async function sendNotification(eq) {
                 distance: String(safeDistance),
                 source: source,
                 time: String(quakeTime),
-                open_alarm: sendAlarmFlag ? "true" : "false"   // Ücretsiz için her zaman false
+                open_alarm: sendAlarmFlag ? "true" : "false"
             },
             android: {
                 priority: sendAlarmFlag ? "max" : "high",
@@ -239,29 +236,31 @@ async function sendNotification(eq) {
         });
     });
 
-    if (messages.length === 0) return;
+    if (messages.length === 0) {
+        console.log("❌ Hiçbir kullanıcıya bildirim gönderilmedi.");
+        return;
+    }
 
+    // ... (batch gönderme kısmı aynı kalabilir)
     for (let i = 0; i < messages.length; i += 500) {
         const batch = messages.slice(i, i + 500);
         try {
             const res = await admin.messaging().sendEach(batch);
+            console.log(`✅ Batch tamamlandı: ${res.successCount} başarılı, ${res.failureCount} başarısız`);
 
+            // invalid token temizleme...
             const invalidTokens = [];
             res.responses.forEach((response, index) => {
                 if (!response.success) {
                     const code = response.error?.code;
-                    if (code === "messaging/registration-token-not-registered" ||
+                    if (code === "messaging/registration-token-not-registered" || 
                         code === "messaging/invalid-registration-token") {
                         invalidTokens.push(batch[index].token);
                     }
                 }
             });
 
-            if (invalidTokens.length > 0) {
-                await cleanInvalidTokens(invalidTokens);
-            }
-
-            console.log(`✅ ${res.successCount} bildirim gönderildi (${res.failureCount} başarısız)`);
+            if (invalidTokens.length > 0) await cleanInvalidTokens(invalidTokens);
         } catch (e) {
             console.error("❌ FCM Batch Hatası:", e.message);
         }
