@@ -121,106 +121,94 @@ async function cleanInvalidTokens(tokens) {
 // ======================
 // 🔔 BİLDİRİM GÖNDERİMİ
 // ======================
+// 🔔 BİLDİRİM GÖNDERİMİ
 async function sendNotification(eq) {
-    const mag = Number(eq.properties.mag || 0);
-    const place = String(eq.properties.place || "Deprem");
-    const source = eq.properties.source || "usgs";
+    const mag = Number(eq.properties.mag || 0);
+    const place = String(eq.properties.place || "Deprem");
+    const source = eq.properties.source || "usgs";
+    const [lon, lat, depthRaw] = eq.geometry.coordinates;
+    const depth = Math.round(depthRaw || 0);
+    const quakeTime = eq.properties.time || eq.properties.timestamp || eq.properties.date || Date.now();
 
-    const [lon, lat, depthRaw] = eq.geometry.coordinates;
-    const depth = Math.round(depthRaw || 0);
-    const quakeTime = eq.properties.time || eq.properties.timestamp || eq.properties.date || Date.now();
+    console.log(`📨 İşlem Başladı: ${source} | Şiddet: ${mag} | Yer: ${place}`);
 
-    console.log(`📨 İşlem Başladı: ${source} | Şiddet: ${mag} | Yer: ${place}`);
+    const snapshot = await db.collection("users")
+        .where("pushActive", "==", true)
+        .select("token", "lat", "lon", "notificationsEnabled", "alarmEnabled",
+                "isPremium", "premiumUntil", "minMag", "maxDist", "alarmEnabled")
+        .limit(2000)
+        .get();
 
-    // Cihaz ayarlarını optimize etmek için projeye uygun limitlendirilmiş veri çekimi
-    const snapshot = await db.collection("users")
-        .where("pushActive", "==", true)
-        .select(
-            "token", "lat", "lon", "notificationsEnabled", "alarmEnabled",
-            "isPremium", "premiumUntil", "minMag", "maxDist", "alarmMag", "alarmDist"
-        )
-        .limit(2000)
-        .get();
+    const messages = [];
 
-    const messages = [];
+    snapshot.forEach(doc => {
+        const user = doc.data();
+        if (!user.token) return;
 
-    snapshot.forEach(doc => {
-        const user = doc.data();
+        const notificationsEnabled = user.notificationsEnabled === true;
+        const alarmEnabledGlobal = user.alarmEnabled === true;
 
-        if (!user.token) return;
+        if (!notificationsEnabled && !alarmEnabledGlobal) return;
 
-        const notificationsEnabled = user.notificationsEnabled === true;
-        const alarmEnabledGlobal = user.alarmEnabled === true;
+        if (user.lat == null || user.lon == null) return;
 
-        if (!notificationsEnabled && !alarmEnabledGlobal) return;
+        const userLat = Number(user.lat);
+        const userLon = Number(user.lon);
+        if (isNaN(userLat) || isNaN(userLon)) return;
 
-        if (user.lat === undefined || user.lon === undefined || user.lat === null || user.lon === null) {
-            return;
-        }
+        const distance = getDistance(userLat, userLon, lat, lon);
 
-        const userLat = Number(user.lat);
-        const userLon = Number(user.lon);
-        if (isNaN(userLat) || isNaN(userLon)) return;
+        if (source === "kandilli") {
+            const isTR = userLat >= 34 && userLat <= 44 && userLon >= 24 && userLon <= 47;
+            if (!isTR) return;
+        }
 
-        const distance = getDistance(userLat, userLon, lat, lon);
+        let sendNotificationFlag = false;
+        let sendAlarmFlag = false;
 
-        // 🇹🇷 KANDİLLİ ÖZEL KURALI: Türkiye sınırları dışında Kandilli bildirimi gönderilmez.
-        if (source === "kandilli") {
-            const isTR = userLat >= 34 && userLat <= 44 && userLon >= 24 && userLon <= 47; 
-            if (!isTR) return;
-        }
+        let isPremium = user.isPremium === true;
+        if (user.premiumUntil) {
+            try {
+                isPremium = user.premiumUntil.toDate() > new Date();
+            } catch (e) {
+                console.log("⚠️ premiumUntil parse hatası:", e.message);
+            }
+        }
 
-        let sendNotificationFlag = false;
-        let sendAlarmFlag = false;
+        if (isPremium) {
+            const minMag = Number(user.minMag || 1);
+            const maxDist = Number(user.maxDist || 500);
 
-        // 🔥 PREMIUM KONTROLÜ
-        let isPremium = user.isPremium === true;
-        if (user.premiumUntil) {
-            try {
-                const until = user.premiumUntil.toDate();
-                isPremium = until > new Date();
-            } catch (e) {
-                console.log("⚠️ premiumUntil parse hatası:", e.message);
-            }
-        }
+            // Kayan Bildirim (Normal)
+            if (mag >= minMag && distance <= maxDist) {
+                sendNotificationFlag = true;
+            }
 
-        if (isPremium) {
-            const notifMinMag = Number(user.minMag || 1);
-            const notifMaxDist = Number(user.maxDist || 500);
-            const alarmMinMag = Number(user.alarmMag ?? 4.5);
-            const alarmMaxDist = Number(user.alarmDist ?? 15000);
-            const alarmEnabled = user.alarmEnabled === true;
+            // Alarm Bildirimi (Aynı filtreye göre)
+            if (alarmEnabledGlobal && mag >= minMag && distance <= maxDist) {
+                sendNotificationFlag = true;
+                sendAlarmFlag = true;
+            }
+        } else {
+            // Ücretsiz Kullanıcı
+            if (mag >= 2.0 && distance <= 1200) {
+                sendNotificationFlag = true;
+            }
+        }
 
-            if (mag >= notifMinMag && distance <= notifMaxDist) {
-                sendNotificationFlag = true;
-            }
+        if (!sendNotificationFlag) return;
 
-            if (alarmEnabled && mag >= alarmMinMag && distance <= alarmMaxDist) {
-                sendNotificationFlag = true;
-                sendAlarmFlag = true;
-            }
-        } else {
-            // 🆓 ÜCRETSİZ KULLANICI FİLTRESİ
-            if (mag >= 2.0 && distance <= 1200) {
-                sendNotificationFlag = true;
-            }
-        }
+        const safeMag = isNaN(mag) ? 0 : mag;
+        const safePlace = place && place.length > 2 ? place : "Bilinmeyen konum";
+        const safeDistance = distance || 0;
+        const safeDepth = depth || 0;
 
-        if (!sendNotificationFlag) return;
-
-        const safeMag = isNaN(mag) ? 0 : mag;
-        const safePlace = place && place.length > 2 ? place : "Bilinmeyen konum";
-        const safeDistance = distance || 0;
-        const safeDepth = depth || 0;
-
-messages.push({
+        messages.push({
             token: user.token,
-            
             notification: {
                 title: `${safeMag.toFixed(1)} Deprem`,
                 body: `${safePlace} • ${safeDistance} km`
             },
-
             data: {
                 title: `${safeMag.toFixed(1)} Deprem`,
                 body: `${safePlace} • ${safeDistance} km • ${safeDepth} km`,
@@ -234,45 +222,40 @@ messages.push({
                 time: String(quakeTime),
                 open_alarm: sendAlarmFlag ? "true" : "false"
             },
-            
             android: {
-                priority: "high", // Paketin acil ulaştırılması için
+                priority: "high",
                 notification: {
-                    channelId: "earthquake_high_channel", // 📍 Dart/Flutter'daki kanal ID'si ile eşleşti
-                    priority: "high",                     // 📍 Heads-up (Tepede kayma) garantilendi
-                    sound: "default",                     // 📍 Android için ses çalma komutu aktif edildi
-                    defaultSound: true,                   // 📍 Sistem varsayılan bildirim sesini zorunlu kıldı
+                    channelId: "earthquake_high_channel",
+                    priority: "high",
+                    sound: "default",
+                    defaultSound: true,
                     visibility: "public"
                 }
             }
         });
-    });
+    });
 
-    if (messages.length === 0) return;
+    if (messages.length === 0) return;
 
-    for (let i = 0; i < messages.length; i += 500) {
-        const batch = messages.slice(i, i + 500);
-        try {
-            const res = await admin.messaging().sendEach(batch);
-            const invalidTokens = [];
-            res.responses.forEach((r, idx) => {
-                if (!r.success) {
-                    const err = r.error?.code;
-                    if (err === "messaging/registration-token-not-registered" || 
-                        err === "messaging/invalid-registration-token") {
-                        invalidTokens.push(batch[idx].token);
-                    }
-                }
-            });
-            
-            if (invalidTokens.length > 0) {
-                await cleanInvalidTokens(invalidTokens);
-            }
-            console.log(`✅ ${res.successCount} adet bildirim başarıyla iletildi.`);
-        } catch (e) {
-            console.error("❌ FCM Batch Hatası:", e.message);
-        }
-    }
+    for (let i = 0; i < messages.length; i += 500) {
+        const batch = messages.slice(i, i + 500);
+        try {
+            const res = await admin.messaging().sendEach(batch);
+            const invalidTokens = res.responses
+                .filter(r => !r.success)
+                .filter(r => ["messaging/registration-token-not-registered", 
+                             "messaging/invalid-registration-token"].includes(r.error?.code))
+                .map((r, idx) => batch[idx].token);  // Düzeltme: idx batch'e göre
+
+            if (invalidTokens.length > 0) {
+                await cleanInvalidTokens(invalidTokens);
+            }
+
+            console.log(`✅ ${res.successCount} bildirim gönderildi.`);
+        } catch (e) {
+            console.error("❌ FCM Batch Hatası:", e.message);
+        }
+    }
 }
 
 // ======================
