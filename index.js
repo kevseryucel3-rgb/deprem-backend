@@ -226,23 +226,38 @@ if (user.premiumUntil) {
         const safeDistance = distance || 0;
         const safeDepth = depth || 0;
 
-        messages.push({
-            token: user.token,
-            data: {
-                title: `${safeMag.toFixed(1)} Deprem`,
-                body: `${safePlace} • ${safeDistance} km • ${safeDepth} km`,
-                place: safePlace,
-                mag: String(safeMag),
-                lat: String(lat),
-                lon: String(lon),
-                depth: String(safeDepth),
-                distance: String(safeDistance),
-                source: source,
-                time: String(quakeTime),
-                open_alarm: sendAlarmFlag ? "true" : "false"
-            },
-            android: { priority: "high" }
-        });
+       messages.push({
+    token: user.token,
+
+    notification: {
+        title: `${safeMag.toFixed(1)} Deprem`,
+        body: `${safePlace} • ${safeDistance} km • ${safeDepth} km`
+    },
+
+    data: {
+        title: `${safeMag.toFixed(1)} Deprem`,
+        body: `${safePlace} • ${safeDistance} km • ${safeDepth} km`,
+        place: safePlace,
+        mag: String(safeMag),
+        lat: String(lat),
+        lon: String(lon),
+        depth: String(safeDepth),
+        distance: String(safeDistance),
+        source: source,
+        time: String(quakeTime),
+        open_alarm: sendAlarmFlag ? "true" : "false"
+    },
+
+    android: {
+        priority: "high",
+        notification: {
+            channelId: "earthquake_high_channel",
+            priority: "high",
+            defaultSound: true,
+            visibility: "public"
+        }
+    }
+});
     });
 
     if (messages.length === 0) return;
