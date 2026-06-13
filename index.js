@@ -150,74 +150,79 @@ async function sendNotification(eq) {
 
         if (!user.token) return;
 
-        const notificationsEnabled = user.notificationsEnabled === true;
-        const alarmEnabledGlobal = user.alarmEnabled === true;
+       // 🛠️ Düzenleme: Mükerrer tanımlamalar kaldırıldı. Alan null/undefined ise varsayılan true kabul edilir.
+        const notificationsEnabled = user.notificationsEnabled !== false;
+        const alarmEnabledGlobal = user.alarmEnabled === true;
 
-        if (!notificationsEnabled && !alarmEnabledGlobal) return;
+        if (!notificationsEnabled && !alarmEnabledGlobal) return;
 
-        if (user.lat === undefined || user.lon === undefined || user.lat === null || user.lon === null) {
-            return;
-        }
+        if (user.lat === undefined || user.lon === undefined || user.lat === null || user.lon === null) {
+            return;
+        }
 
-        const userLat = Number(user.lat);
-        const userLon = Number(user.lon);
-        if (isNaN(userLat) || isNaN(userLon)) return;
+        const userLat = Number(user.lat);
+        const userLon = Number(user.lon);
+        if (isNaN(userLat) || isNaN(userLon)) return;
 
-        const distance = getDistance(userLat, userLon, lat, lon);
+        const distance = getDistance(userLat, userLon, lat, lon);
 
-        // 🇹🇷 KANDİLLİ ÖZEL KURALI: Türkiye sınırları dışında Kandilli bildirimi gönderilmez.
-        if (source === "kandilli") {
-            const isTR = userLat >= 34 && userLat <= 44 && userLon >= 24 && userLon <= 47; 
-            if (!isTR) return;
-        }
+        // 🇹🇷 KANDİLLİ ÖZEL KURALI: Türkiye sınırları dışında Kandilli bildirimi gönderilmez.
+        if (source === "kandilli") {
+            const isTR = userLat >= 34 && userLat <= 44 && userLon >= 24 && userLon <= 47; 
+            if (!isTR) return;
+        }
 
-        let sendNotificationFlag = false;
-        let sendAlarmFlag = false;
+        let sendNotificationFlag = false;
+        let sendAlarmFlag = false;
 
-        // 🔥 PREMIUM KONTROLÜ
-       let isPremium = false;
+        // 🔥 PREMIUM KONTROLÜ
+        let isPremium = false;
 
-if (user.premiumUntil) {
-            try {
-                const until = user.premiumUntil.toDate();
-                isPremium = until > new Date();
-            } catch (e) {
-                console.log("⚠️ premiumUntil parse hatası:", e.message);
-            }
-        }
+        if (user.premiumUntil) {
+            try {
+                const until = user.premiumUntil.toDate();
+                isPremium = until > new Date();
+            } catch (e) {
+                console.log("⚠️ premiumUntil parse hatası:", e.message);
+            }
+        }
 
-  if (isPremium) {
-    const notifMinMag = Number(user.minMag || 1);
-    const notifMaxDist = Number(user.maxDist || 500);
-    const alarmMinMag = Number(user.alarmMag ?? 4.5);
-    const alarmMaxDist = Number(user.alarmDist ?? 15000);
-    const alarmEnabled = user.alarmEnabled === true;
+        if (isPremium) {
+            // Premium kullanıcılar kendi panellerinden kapattıysa katı kontrol (=== true) uygula
+            const isNotifEnabledPremium = user.notificationsEnabled === true;
+            const notifMinMag = Number(user.minMag || 1);
+            const notifMaxDist = Number(user.maxDist || 500);
+            const alarmMinMag = Number(user.alarmMag ?? 4.5);
+            const alarmMaxDist = Number(user.alarmDist ?? 15000);
+            const alarmEnabled = user.alarmEnabled === true;
 
-    if (
-        notificationsEnabled &&
-        mag >= notifMinMag &&
-        distance <= notifMaxDist
-    ) {
-        sendNotificationFlag = true;
-    }
+            if (
+                isNotifEnabledPremium &&
+                mag >= notifMinMag &&
+                distance <= notifMaxDist
+            ) {
+                sendNotificationFlag = true;
+            }
 
-    if (
-        alarmEnabled &&
-        mag >= alarmMinMag &&
-        distance <= alarmMaxDist
-    ) {
-        sendNotificationFlag = true;
-        sendAlarmFlag = true;
-    }
-} else {
-    if (
-        notificationsEnabled &&
-        mag >= 2.0 &&
-        distance <= 1200
-    ) {
-        sendNotificationFlag = true;
-    }
-}
+            if (
+                alarmEnabled &&
+                mag >= alarmMinMag &&
+                distance <= alarmMaxDist
+            ) {
+                sendNotificationFlag = true;
+                sendAlarmFlag = true;
+            }
+        } else {
+            // 🔓 FREE KULLANICI KURALI: Kullanıcı ayarı kapatmadıysa (ayarı yoksa veya true ise) 
+            // 2.0 ve üzeri, 1200 km yakınındaki tüm anlık bildirimleri alsın.
+            if (
+                notificationsEnabled &&
+                mag >= 2.0 &&
+                distance <= 1200
+            ) {
+                sendNotificationFlag = true;
+            }
+        }
 
         if (!sendNotificationFlag) return;
 
