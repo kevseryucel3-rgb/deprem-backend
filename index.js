@@ -186,13 +186,15 @@ if (user.premiumUntil) {
             }
         }
 
-  if (isPremium) {
-    const notifMinMag = Number(user.minMag || 1);
-    const notifMaxDist = Number(user.maxDist || 500);
-    const alarmMinMag = Number(user.alarmMag ?? 4.5);
-    const alarmMaxDist = Number(user.alarmDist ?? 15000);
-    const alarmEnabled = user.alarmEnabled === true;
+const notifMinMag = Number(user.minMag ?? 1);
+const notifMaxDist = Number(user.maxDist ?? 500);
 
+const alarmMinMag = Number(user.alarmMag ?? 4.5);
+const alarmMaxDist = Number(user.alarmDist ?? 15000);
+const alarmEnabled = user.alarmEnabled === true;
+
+if (isPremium) {
+    // PREMIUM: KAYAN BILDIRIM
     if (
         notificationsEnabled &&
         mag >= notifMinMag &&
@@ -201,6 +203,7 @@ if (user.premiumUntil) {
         sendNotificationFlag = true;
     }
 
+    // PREMIUM: ALARM
     if (
         alarmEnabled &&
         mag >= alarmMinMag &&
@@ -210,13 +213,17 @@ if (user.premiumUntil) {
         sendAlarmFlag = true;
     }
 } else {
+    // FREE: SADECE KAYAN BILDIRIM
     if (
         notificationsEnabled &&
-        mag >= 2.0 &&
-        distance <= 1200
+        mag >= notifMinMag &&
+        distance <= notifMaxDist
     ) {
         sendNotificationFlag = true;
     }
+
+    // FREE kullaniciya alarm ASLA gitmez
+    sendAlarmFlag = false;
 }
 
         if (!sendNotificationFlag) return;
@@ -226,13 +233,8 @@ if (user.premiumUntil) {
         const safeDistance = distance || 0;
         const safeDepth = depth || 0;
 
-       messages.push({
+    messages.push({
     token: user.token,
-
-    notification: {
-        title: `${safeMag.toFixed(1)} Deprem`,
-        body: `${safePlace} • ${safeDistance} km • ${safeDepth} km`
-    },
 
     data: {
         title: `${safeMag.toFixed(1)} Deprem`,
@@ -249,13 +251,7 @@ if (user.premiumUntil) {
     },
 
     android: {
-        priority: "high",
-        notification: {
-            channelId: "earthquake_high_channel",
-            priority: "high",
-            defaultSound: true,
-            visibility: "public"
-        }
+        priority: "high"
     }
 });
     });
