@@ -34,7 +34,43 @@ const db = admin.firestore();
 // ======================
 let isProcessing = false;
 let lastRun = 0;
+const GLOBAL_MIN_NOTIFY_MAG = 1.0;
+const RECENT_SENT_TTL_MS = 90 * 60 * 1000;
+const USER_PAGE_SIZE = 2000;
+const FCM_BATCH_SIZE = 500;
+const recentSentCache = new Map();
 
+function getSentCacheKey(id, mag) {
+    return `${id}:${Number(mag).toFixed(1)}`;
+}
+
+function hasRecentSent(id, mag) {
+    const key = getSentCacheKey(id, mag);
+    const sentAt = recentSentCache.get(key);
+
+    if (!sentAt) return false;
+
+    if (Date.now() - sentAt > RECENT_SENT_TTL_MS) {
+        recentSentCache.delete(key);
+        return false;
+    }
+
+    return true;
+}
+
+function markRecentSent(id, mag) {
+    recentSentCache.set(getSentCacheKey(id, mag), Date.now());
+
+    if (recentSentCache.size > 5000) {
+        const now = Date.now();
+
+        for (const [key, sentAt] of recentSentCache.entries()) {
+            if (now - sentAt > RECENT_SENT_TTL_MS) {
+                recentSentCache.delete(key);
+            }
+        }
+    }
+}
 // ======================
 // 📏 MESAFE HESAPLAMA (Haversine Formülü)
 // ======================
@@ -123,165 +159,229 @@ async function cleanInvalidTokens(tokens) {
 // 🔔 BİLDİRİM GÖNDERİMİ
 // ======================
 async function sendNotification(eq) {
-    const mag = Number(eq.properties.mag || 0);
-    const place = String(eq.properties.place || "Deprem");
-    const source = eq.properties.source || "usgs";
+    const mag = Number(eq.properties.mag || 0);
 
-    const [lon, lat, depthRaw] = eq.geometry.coordinates;
-    const depth = Math.round(depthRaw || 0);
-    const quakeTime = eq.properties.time || eq.properties.timestamp || eq.properties.date || Date.now();
-
-    console.log(`📨 İşlem Başladı: ${source} | Şiddet: ${mag} | Yer: ${place}`);
-
-    // Cihaz ayarlarını optimize etmek için projeye uygun limitlendirilmiş veri çekimi
-    const snapshot = await db.collection("users")
-        .where("pushActive", "==", true)
-        .select(
-            "token", "lat", "lon", "notificationsEnabled", "alarmEnabled",
-            "isPremium", "premiumUntil", "minMag", "maxDist", "alarmMag", "alarmDist"
-        )
-        .limit(2000)
-        .get();
-
-    const messages = [];
-
-    snapshot.forEach(doc => {
-        const user = doc.data();
-
-        if (!user.token) return;
-
-        const notificationsEnabled = user.notificationsEnabled === true;
-        const alarmEnabledGlobal = user.alarmEnabled === true;
-
-        if (!notificationsEnabled && !alarmEnabledGlobal) return;
-
-        if (user.lat === undefined || user.lon === undefined || user.lat === null || user.lon === null) {
-            return;
-        }
-
-        const userLat = Number(user.lat);
-        const userLon = Number(user.lon);
-        if (isNaN(userLat) || isNaN(userLon)) return;
-
-        const distance = getDistance(userLat, userLon, lat, lon);
-
-        // 🇹🇷 KANDİLLİ ÖZEL KURALI: Türkiye sınırları dışında Kandilli bildirimi gönderilmez.
-        if (source === "kandilli") {
-            const isTR = userLat >= 34 && userLat <= 44 && userLon >= 24 && userLon <= 47; 
-            if (!isTR) return;
-        }
-
-        let sendNotificationFlag = false;
-        let sendAlarmFlag = false;
-
-        // 🔥 PREMIUM KONTROLÜ
-       let isPremium = false;
-
-if (user.premiumUntil) {
-            try {
-                const until = user.premiumUntil.toDate();
-                isPremium = until > new Date();
-            } catch (e) {
-                console.log("⚠️ premiumUntil parse hatası:", e.message);
-            }
-        }
-
-const notifMinMag = Number(user.minMag ?? 1);
-const notifMaxDist = Number(user.maxDist ?? 15000);
-
-const alarmMinMag = Number(user.alarmMag ?? 4.5);
-const alarmMaxDist = Number(user.alarmDist ?? 15000);
-const alarmEnabled = user.alarmEnabled === true;
-
-if (isPremium) {
-    // PREMIUM: KAYAN BILDIRIM
-    if (
-        notificationsEnabled &&
-        mag >= notifMinMag &&
-        distance <= notifMaxDist
-    ) {
-        sendNotificationFlag = true;
+    if (isNaN(mag) || mag < GLOBAL_MIN_NOTIFY_MAG) {
+        console.log(`⏭️ ${mag} küçük deprem, kullanıcı sorgusu yapılmadı.`);
+        return;
     }
 
-    // PREMIUM: ALARM
-    if (
-        alarmEnabled &&
-        mag >= alarmMinMag &&
-        distance <= alarmMaxDist
-    ) {
-        sendNotificationFlag = true;
-        sendAlarmFlag = true;
-    }
-} else {
-    // FREE: SADECE KAYAN BILDIRIM
-    if (
-        notificationsEnabled &&
-        mag >= notifMinMag &&
-        distance <= notifMaxDist
-    ) {
-        sendNotificationFlag = true;
+    const place = String(eq.properties.place || "Deprem");
+    const source = eq.properties.source || "usgs";
+
+    const [lon, lat, depthRaw] = eq.geometry.coordinates;
+    const depth = Math.round(depthRaw || 0);
+    const quakeTime = eq.properties.time || eq.properties.timestamp || eq.properties.date || Date.now();
+
+    console.log(`📨 İşlem Başladı: ${source} | Şiddet: ${mag} | Yer: ${place}`);
+
+    let usersQuery = db.collection("users")
+        .where("pushActive", "==", true);
+
+    if (source === "kandilli") {
+        usersQuery = usersQuery
+            .where("lat", ">=", 34)
+            .where("lat", "<=", 44);
     }
 
-    // FREE kullaniciya alarm ASLA gitmez
-    sendAlarmFlag = false;
+    let lastDoc = null;
+    let totalReadUsers = 0;
+    let totalPreparedMessages = 0;
+
+    while (true) {
+        let pageQuery = usersQuery
+            .select(
+                "token", "lat", "lon", "notificationsEnabled", "alarmEnabled",
+                "isPremium", "premiumUntil", "minMag", "maxDist", "alarmMag", "alarmDist"
+            )
+            .limit(USER_PAGE_SIZE);
+
+        if (source === "kandilli") {
+            pageQuery = pageQuery
+                .orderBy("lat")
+                .orderBy(admin.firestore.FieldPath.documentId());
+        } else {
+            pageQuery = pageQuery
+                .orderBy(admin.firestore.FieldPath.documentId());
+        }
+
+        if (lastDoc) {
+            pageQuery = pageQuery.startAfter(lastDoc);
+        }
+
+        const snapshot = await pageQuery.get();
+
+        if (snapshot.empty) break;
+
+        totalReadUsers += snapshot.size;
+
+        const messages = [];
+
+        snapshot.forEach(doc => {
+            const user = doc.data();
+
+            if (!user.token) return;
+
+            const notificationsEnabled = user.notificationsEnabled === true;
+            const alarmEnabledGlobal = user.alarmEnabled === true;
+
+            if (!notificationsEnabled && !alarmEnabledGlobal) return;
+
+            if (
+                user.lat === undefined ||
+                user.lon === undefined ||
+                user.lat === null ||
+                user.lon === null
+            ) {
+                return;
+            }
+
+            const userLat = Number(user.lat);
+            const userLon = Number(user.lon);
+
+            if (isNaN(userLat) || isNaN(userLon)) return;
+
+            const distance = getDistance(userLat, userLon, lat, lon);
+
+            // Kandilli sadece Türkiye içindeki kullanıcılara gider.
+            if (source === "kandilli") {
+                const isTR =
+                    userLat >= 34 &&
+                    userLat <= 44 &&
+                    userLon >= 24 &&
+                    userLon <= 47;
+
+                if (!isTR) return;
+            }
+
+            let sendNotificationFlag = false;
+            let sendAlarmFlag = false;
+
+            let isPremium = false;
+
+            if (user.premiumUntil) {
+                try {
+                    const until = user.premiumUntil.toDate();
+                    isPremium = until > new Date();
+                } catch (e) {
+                    console.log("⚠️ premiumUntil parse hatası:", e.message);
+                }
+            }
+
+            const notifMinMag = Number(user.minMag ?? 1);
+            const notifMaxDist = Number(user.maxDist ?? 15000);
+
+            const alarmMinMag = Number(user.alarmMag ?? 4.5);
+            const alarmMaxDist = Number(user.alarmDist ?? 15000);
+            const alarmEnabled = user.alarmEnabled === true;
+
+            if (isPremium) {
+                // PREMIUM: KAYAN BİLDİRİM
+                if (
+                    notificationsEnabled &&
+                    mag >= notifMinMag &&
+                    distance <= notifMaxDist
+                ) {
+                    sendNotificationFlag = true;
+                }
+
+                // PREMIUM: ALARM
+                if (
+                    alarmEnabled &&
+                    mag >= alarmMinMag &&
+                    distance <= alarmMaxDist
+                ) {
+                    sendNotificationFlag = true;
+                    sendAlarmFlag = true;
+                }
+            } else {
+                // FREE: SADECE KAYAN BİLDİRİM
+                if (
+                    notificationsEnabled &&
+                    mag >= notifMinMag &&
+                    distance <= notifMaxDist
+                ) {
+                    sendNotificationFlag = true;
+                }
+
+                // FREE kullanıcıya alarm ASLA gitmez
+                sendAlarmFlag = false;
+            }
+
+            if (!sendNotificationFlag) return;
+
+            const safeMag = isNaN(mag) ? 0 : mag;
+            const safePlace = place && place.length > 2 ? place : "Bilinmeyen konum";
+            const safeDistance = distance || 0;
+            const safeDepth = depth || 0;
+
+            messages.push({
+                token: user.token,
+
+                data: {
+                    title: `${safeMag.toFixed(1)} Deprem`,
+                    body: `${safePlace} • ${safeDistance} km • ${safeDepth} km`,
+                    place: safePlace,
+                    mag: String(safeMag),
+                    lat: String(lat),
+                    lon: String(lon),
+                    depth: String(safeDepth),
+                    distance: String(safeDistance),
+                    source: source,
+                    time: String(quakeTime),
+                    open_alarm: sendAlarmFlag ? "true" : "false"
+                },
+
+                android: {
+                    priority: "high"
+                }
+            });
+        });
+
+        if (messages.length > 0) {
+            totalPreparedMessages += messages.length;
+
+            for (let i = 0; i < messages.length; i += FCM_BATCH_SIZE) {
+                const batch = messages.slice(i, i + FCM_BATCH_SIZE);
+
+                try {
+                    const res = await admin.messaging().sendEach(batch);
+                    const invalidTokens = [];
+
+                    res.responses.forEach((r, idx) => {
+                        if (!r.success) {
+                            const err = r.error?.code;
+
+                            if (
+                                err === "messaging/registration-token-not-registered" ||
+                                err === "messaging/invalid-registration-token"
+                            ) {
+                                invalidTokens.push(batch[idx].token);
+                            }
+                        }
+                    });
+
+                    if (invalidTokens.length > 0) {
+                        await cleanInvalidTokens(invalidTokens);
+                    }
+
+                    console.log(`✅ ${res.successCount} adet bildirim başarıyla iletildi.`);
+                } catch (e) {
+                    console.error("❌ FCM Batch Hatası:", e.message);
+                }
+            }
+        }
+
+        lastDoc = snapshot.docs[snapshot.docs.length - 1];
+
+        if (snapshot.size < USER_PAGE_SIZE) break;
+    }
+
+    console.log(
+        `📊 ${source} | Okunan kullanıcı: ${totalReadUsers} | Hazırlanan mesaj: ${totalPreparedMessages}`
+    );
 }
 
-        if (!sendNotificationFlag) return;
-
-        const safeMag = isNaN(mag) ? 0 : mag;
-        const safePlace = place && place.length > 2 ? place : "Bilinmeyen konum";
-        const safeDistance = distance || 0;
-        const safeDepth = depth || 0;
-
-    messages.push({
-    token: user.token,
-
-    data: {
-        title: `${safeMag.toFixed(1)} Deprem`,
-        body: `${safePlace} • ${safeDistance} km • ${safeDepth} km`,
-        place: safePlace,
-        mag: String(safeMag),
-        lat: String(lat),
-        lon: String(lon),
-        depth: String(safeDepth),
-        distance: String(safeDistance),
-        source: source,
-        time: String(quakeTime),
-        open_alarm: sendAlarmFlag ? "true" : "false"
-    },
-
-    android: {
-        priority: "high"
-    }
-});
-    });
-
-    if (messages.length === 0) return;
-
-    for (let i = 0; i < messages.length; i += 500) {
-        const batch = messages.slice(i, i + 500);
-        try {
-            const res = await admin.messaging().sendEach(batch);
-            const invalidTokens = [];
-            res.responses.forEach((r, idx) => {
-                if (!r.success) {
-                    const err = r.error?.code;
-                    if (err === "messaging/registration-token-not-registered" || 
-                        err === "messaging/invalid-registration-token") {
-                        invalidTokens.push(batch[idx].token);
-                    }
-                }
-            });
-            
-            if (invalidTokens.length > 0) {
-                await cleanInvalidTokens(invalidTokens);
-            }
-            console.log(`✅ ${res.successCount} adet bildirim başarıyla iletildi.`);
-        } catch (e) {
-            console.error("❌ FCM Batch Hatası:", e.message);
-        }
-    }
-}
 
 // ======================
 // 🔍 ANA DÖNGÜ (LOOP)
@@ -325,13 +425,19 @@ async function checkEarthquakes() {
         for (const eq of usgsList) {
             try {
                 const [lon, lat, depthRaw] = eq.geometry.coordinates;
-                const mag = Number(eq.properties.mag || 0);
-                const quakeTime = eq.properties.time || Date.now();
+               const mag = Number(eq.properties.mag || 0);
+if (isNaN(mag) || mag < GLOBAL_MIN_NOTIFY_MAG) continue;
+
+const quakeTime = eq.properties.time || Date.now();
                 const id = `usgs_${eq.id}_${quakeTime}`;
                 const finalDocId = id.replace(/[^a-zA-Z0-9_-]/g, "_");
                 
-                const sent = await checkAndMarkSent(finalDocId, mag);
-                if (!sent) {
+                if (hasRecentSent(finalDocId, mag)) continue;
+
+const sent = await checkAndMarkSent(finalDocId, mag);
+markRecentSent(finalDocId, mag);
+
+if (!sent) {
                     await sendNotification({
                         ...eq,
                         geometry: { coordinates: [lon, lat, depthRaw] },
@@ -346,8 +452,8 @@ async function checkEarthquakes() {
         // 🇹🇷 KANDİLLİ İŞLEME
         for (const eq of kandilliList) {
             try {
-                const mag = parseFloat(eq.mag);
-                if (isNaN(mag)) continue;
+               const mag = parseFloat(eq.mag);
+if (isNaN(mag) || mag < GLOBAL_MIN_NOTIFY_MAG) continue;
 
                 const lat = Number(eq.lat);
                 const lon = Number(eq.lon);
@@ -361,9 +467,12 @@ async function checkEarthquakes() {
                 const id = eq.id ? String(eq.id) : fallbackId;
                 const finalDocId = id.replace(/[^a-zA-Z0-9_-]/g, "_");
                 
-                const sent = await checkAndMarkSent(finalDocId, mag);
+                if (hasRecentSent(finalDocId, mag)) continue;
 
-                if (!sent) {
+const sent = await checkAndMarkSent(finalDocId, mag);
+markRecentSent(finalDocId, mag);
+
+if (!sent) {
                     await sendNotification({
                         properties: {
                             mag: mag,
