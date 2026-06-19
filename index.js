@@ -222,7 +222,7 @@ async function sendNotification(eq) {
 
             if (!user.token) return;
 
-            const notificationsEnabled = user.notificationsEnabled === true;
+            const notificationsEnabled = user.notificationsEnabled !== false;
             const alarmEnabledGlobal = user.alarmEnabled === true;
 
             if (!notificationsEnabled && !alarmEnabledGlobal) return;
