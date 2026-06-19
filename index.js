@@ -187,7 +187,7 @@ if (user.premiumUntil) {
         }
 
 const notifMinMag = Number(user.minMag ?? 1);
-const notifMaxDist = Number(user.maxDist ?? 500);
+const notifMaxDist = Number(user.maxDist ?? 15000);
 
 const alarmMinMag = Number(user.alarmMag ?? 4.5);
 const alarmMaxDist = Number(user.alarmDist ?? 15000);
