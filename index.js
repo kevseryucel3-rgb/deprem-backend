@@ -452,6 +452,7 @@ await sendNotification({
 } catch (err) {
     console.error("❌ Tekil USGS Satır Hatası:", err.message);
 }
+}
 
         // 🇹🇷 KANDİLLİ İŞLEME
         for (const eq of kandilliList) {
