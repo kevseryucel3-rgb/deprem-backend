@@ -435,9 +435,9 @@ const quakeTime = eq.properties.time || Date.now();
                 if (hasRecentSent(finalDocId, mag)) continue;
 
 const sent = await checkAndMarkSent(finalDocId, mag);
-markRecentSent(finalDocId, mag);
 
 if (!sent) {
+    markRecentSent(finalDocId, mag);
                     await sendNotification({
                         ...eq,
                         geometry: { coordinates: [lon, lat, depthRaw] },
@@ -454,7 +454,15 @@ if (!sent) {
             try {
                const mag = parseFloat(eq.mag);
 if (isNaN(mag) || mag < GLOBAL_MIN_NOTIFY_MAG) continue;
+const quakeTime = new Date(eq.date).getTime();
+const ageMinutes = (Date.now() - quakeTime) / 60000;
 
+if (ageMinutes > 10) {
+    console.log(
+        `⏩ Eski Kandilli depremi atlandı (${ageMinutes.toFixed(1)} dk): ${eq.title}`
+    );
+    continue;
+}
                 const lat = Number(eq.lat);
                 const lon = Number(eq.lon);
                 const depth = Number(eq.depth || 0);
@@ -470,9 +478,9 @@ if (isNaN(mag) || mag < GLOBAL_MIN_NOTIFY_MAG) continue;
                 if (hasRecentSent(finalDocId, mag)) continue;
 
 const sent = await checkAndMarkSent(finalDocId, mag);
-markRecentSent(finalDocId, mag);
 
 if (!sent) {
+    markRecentSent(finalDocId, mag);
                     await sendNotification({
                         properties: {
                             mag: mag,
