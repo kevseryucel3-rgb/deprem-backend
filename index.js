@@ -498,7 +498,7 @@ await sendNotification({
                             coordinates: [lon, lat, depth]
                         }
                     });
-                }
+             
             } catch (err) {
                 console.error("❌ Tekil Kandilli Satır Hatası:", err.message);
             }
