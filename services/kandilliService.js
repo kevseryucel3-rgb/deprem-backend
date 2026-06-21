@@ -92,23 +92,13 @@ async function getKandilliDepremler() {
     // 1. split ile satırları ayır
     // 2. slice(0, 30) ile ilk 30 satırı al (sadece en güncel olanlar)
     // 3. parseLine ile işle ve null olanları filtrele
-   const earthquakes = rawText
-.split("\n")
-.map((line) => parseLine(line))
-.filter(Boolean)
-.sort((a, b) => b.time - a.time)
-.slice(0, 100);
-
+    const earthquakes = rawText
+      .split("\n")
+      .slice(0, 100) 
+      .map((line) => parseLine(line))
+      .filter(Boolean);
 
     console.log(`✅ Kandilli verisi korumalı işlendi: ${earthquakes.length} adet deprem bulundu.`);
-if (earthquakes.length > 0) {
-  console.log(
-    "SON DEPREM:",
-    earthquakes[0].date_time,
-    earthquakes[0].place,
-    earthquakes[0].mag
-  );
-}
     return earthquakes;
 
   } catch (error) {
