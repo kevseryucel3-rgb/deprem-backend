@@ -422,36 +422,50 @@ async function checkEarthquakes() {
         console.log(`📡 Veri Çekildi -> USGS: ${usgsList.length} | Kandilli: ${kandilliList.length}`);
 
         // 🌍 USGS İŞLEME
-        for (const eq of usgsList) {
-            try {
-                const [lon, lat, depthRaw] = eq.geometry.coordinates;
-               const mag = Number(eq.properties.mag || 0);
-if (isNaN(mag) || mag < GLOBAL_MIN_NOTIFY_MAG) continue;
+for (const eq of usgsList) {
+    try {
+        const [lon, lat, depthRaw] = eq.geometry.coordinates;
 
-const quakeTime = eq.properties.time || Date.now();
-                const id = `usgs_${eq.id}_${quakeTime}`;
-                const finalDocId = id.replace(/[^a-zA-Z0-9_-]/g, "_");
-                
-                if (hasRecentSent(finalDocId, mag)) continue;
+        const mag = Number(eq.properties.mag || 0);
+        if (isNaN(mag) || mag < GLOBAL_MIN_NOTIFY_MAG) continue;
 
-const alreadySent = await checkAndMarkSent(finalDocId, mag);
+        const quakeTime = eq.properties.time || Date.now();
 
-if (alreadySent) {
-    markRecentSent(finalDocId, mag);
-    continue;
-}
+        // ⏰ 15 dakikadan eski veya gelecekte görünen kayıtları atla
+        const ageMinutes = (Date.now() - quakeTime) / 60000;
 
-markRecentSent(finalDocId, mag);
+        if (ageMinutes > 15 || ageMinutes < -15) {
+            continue;
+        }
 
-await sendNotification({
-    ...eq,
-    geometry: { coordinates: [lon, lat, depthRaw] },
-    properties: { ...eq.properties, source: "usgs" }
-});
+        const id = `usgs_${eq.id}_${quakeTime}`;
+        const finalDocId = id.replace(/[^a-zA-Z0-9_-]/g, "_");
 
-} catch (err) {
-    console.error("❌ Tekil USGS Satır Hatası:", err.message);
-}
+        if (hasRecentSent(finalDocId, mag)) continue;
+
+        const alreadySent = await checkAndMarkSent(finalDocId, mag);
+
+        if (alreadySent) {
+            markRecentSent(finalDocId, mag);
+            continue;
+        }
+
+        markRecentSent(finalDocId, mag);
+
+        await sendNotification({
+            ...eq,
+            geometry: {
+                coordinates: [lon, lat, depthRaw]
+            },
+            properties: {
+                ...eq.properties,
+                source: "usgs"
+            }
+        });
+
+    } catch (err) {
+        console.error("❌ Tekil USGS Satır Hatası:", err.message);
+    }
 }
 
         // 🇹🇷 KANDİLLİ İŞLEME
