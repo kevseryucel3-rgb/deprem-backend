@@ -447,7 +447,7 @@ await sendNotification({
                         geometry: { coordinates: [lon, lat, depthRaw] },
                         properties: { ...eq.properties, source: "usgs" }
                     });
-                }
+                
             } catch (err) {
                 console.error("❌ Tekil USGS Satır Hatası:", err.message);
             }
