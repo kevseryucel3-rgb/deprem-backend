@@ -92,11 +92,13 @@ async function getKandilliDepremler() {
     // 1. split ile satırları ayır
     // 2. slice(0, 30) ile ilk 30 satırı al (sadece en güncel olanlar)
     // 3. parseLine ile işle ve null olanları filtrele
-    const earthquakes = rawText
-      .split("\n")
-      .slice(0, 30) 
-      .map((line) => parseLine(line))
-      .filter(Boolean);
+   const earthquakes = rawText
+.split("\n")
+.map((line) => parseLine(line))
+.filter(Boolean)
+.sort((a, b) => b.time - a.time)
+.slice(0, 100);
+
 
     console.log(`✅ Kandilli verisi korumalı işlendi: ${earthquakes.length} adet deprem bulundu.`);
     return earthquakes;
