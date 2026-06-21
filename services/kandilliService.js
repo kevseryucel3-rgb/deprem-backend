@@ -40,6 +40,7 @@ function parseLine(line) {
 
   const isoDate = rawDate.replace(/\./g, "-");
   const dateTime = `${isoDate}T${rawTime}+03:00`;
+const timestampMs = new Date(dateTime).getTime();
   const place = rawPlace.trim().replace(/\s+/g, " ");
 
   const rawIdString = `kandilli_${isoDate}_${rawTime.replace(/:/g, "")}_${latitude}_${longitude}`;
@@ -52,7 +53,7 @@ function parseLine(line) {
     source: "kandilli",
     date_time: dateTime,
     date: dateTime,
-    time: new Date(dateTime).getTime(),
+    time: timestampMs,
     latitude,
     longitude,
     lat: latitude,
@@ -93,10 +94,9 @@ async function getKandilliDepremler() {
     // 2. slice(0, 30) ile ilk 30 satırı al (sadece en güncel olanlar)
     // 3. parseLine ile işle ve null olanları filtrele
     const earthquakes = rawText
-      .split("\n")
-      .slice(0, 100) 
-      .map((line) => parseLine(line))
-      .filter(Boolean);
+  .split("\n")
+  .slice(7, 50) 
+  .map((line) => parseLine(line))
 
     console.log(`✅ Kandilli verisi korumalı işlendi: ${earthquakes.length} adet deprem bulundu.`);
     return earthquakes;

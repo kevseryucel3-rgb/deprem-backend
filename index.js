@@ -434,11 +434,15 @@ const quakeTime = eq.properties.time || Date.now();
                 
                 if (hasRecentSent(finalDocId, mag)) continue;
 
-const sent = await checkAndMarkSent(finalDocId, mag);
+const alreadySent = await checkAndMarkSent(finalDocId, mag);
 
-if (!sent) {
+if (alreadySent) {
     markRecentSent(finalDocId, mag);
-                    await sendNotification({
+    continue;
+}
+
+markRecentSent(finalDocId, mag);
+await sendNotification({
                         ...eq,
                         geometry: { coordinates: [lon, lat, depthRaw] },
                         properties: { ...eq.properties, source: "usgs" }
@@ -452,15 +456,13 @@ if (!sent) {
         // 🇹🇷 KANDİLLİ İŞLEME
         for (const eq of kandilliList) {
             try {
-               const mag = parseFloat(eq.mag);
+              const mag = parseFloat(eq.mag);
 if (isNaN(mag) || mag < GLOBAL_MIN_NOTIFY_MAG) continue;
-const quakeTime = new Date(eq.date).getTime();
+
+const quakeTime = Number(eq.time);
 const ageMinutes = (Date.now() - quakeTime) / 60000;
 
-if (ageMinutes > 10) {
-    console.log(
-        `⏩ Eski Kandilli depremi atlandı (${ageMinutes.toFixed(1)} dk): ${eq.title}`
-    );
+if (ageMinutes > 15 || ageMinutes < -15) {
     continue;
 }
                 const lat = Number(eq.lat);
@@ -477,11 +479,15 @@ if (ageMinutes > 10) {
                 
                 if (hasRecentSent(finalDocId, mag)) continue;
 
-const sent = await checkAndMarkSent(finalDocId, mag);
+const alreadySent = await checkAndMarkSent(finalDocId, mag);
 
-if (!sent) {
+if (alreadySent) {
     markRecentSent(finalDocId, mag);
-                    await sendNotification({
+    continue;
+}
+
+markRecentSent(finalDocId, mag);
+await sendNotification({
                         properties: {
                             mag: mag,
                             place: eq.title,
