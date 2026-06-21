@@ -101,6 +101,14 @@ async function getKandilliDepremler() {
 
 
     console.log(`✅ Kandilli verisi korumalı işlendi: ${earthquakes.length} adet deprem bulundu.`);
+if (earthquakes.length > 0) {
+  console.log(
+    "SON DEPREM:",
+    earthquakes[0].date_time,
+    earthquakes[0].place,
+    earthquakes[0].mag
+  );
+}
     return earthquakes;
 
   } catch (error) {
