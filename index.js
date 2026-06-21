@@ -443,15 +443,14 @@ if (alreadySent) {
 
 markRecentSent(finalDocId, mag);
 await sendNotification({
-                        ...eq,
-                        geometry: { coordinates: [lon, lat, depthRaw] },
-                        properties: { ...eq.properties, source: "usgs" }
-                    });
-                
-            } catch (err) {
-                console.error("❌ Tekil USGS Satır Hatası:", err.message);
-            }
-        }
+            ...eq,
+            geometry: { coordinates: [lon, lat, depthRaw] },
+            properties: { ...eq.properties, source: "usgs" }
+        });
+}
+    } catch (err) {  // <--- İşte buradaki catch'ten önce bir tane parantez kapalı olmalı!
+        console.error("❌ Tekil USGS Satır Hatası:", err.message);
+    }
 
         // 🇹🇷 KANDİLLİ İŞLEME
         for (const eq of kandilliList) {
