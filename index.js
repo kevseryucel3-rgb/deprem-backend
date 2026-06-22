@@ -406,7 +406,7 @@ async function checkEarthquakes() {
         console.log("🔄 [CRON] Deprem taraması başlatıldı...");
 
         const [usgsRes, kandilliRawList] = await Promise.all([
-            fetch("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson").catch(() => null),
+            fetch("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson").catch(() => null),
             getKandilliDepremler().catch(() => [])
         ]);
 
@@ -585,7 +585,7 @@ app.get("/api/kandilli", async (req, res) => {
 
 app.get("/api/usgs", async (req, res) => {
     try {
-        const response = await fetch("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson");
+        const response = await fetch("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson");
         const json = await response.json();
         const cleaned = (json.features || []).map(eq => {
             const [lon, lat, depth] = eq.geometry.coordinates;
