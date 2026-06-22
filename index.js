@@ -422,77 +422,105 @@ async function checkEarthquakes() {
         console.log(`📡 Veri Çekildi -> USGS: ${usgsList.length} | Kandilli: ${kandilliList.length}`);
 
         // 🌍 USGS İŞLEME
-        for (const eq of usgsList) {
-            try {
-                const [lon, lat, depthRaw] = eq.geometry.coordinates;
-               const mag = Number(eq.properties.mag || 0);
-if (isNaN(mag) || mag < GLOBAL_MIN_NOTIFY_MAG) continue;
+for (const eq of usgsList) {
+    try {
+        const [lon, lat, depthRaw] = eq.geometry.coordinates;
 
-const quakeTime = eq.properties.time || Date.now();
-                const id = `usgs_${eq.id}_${quakeTime}`;
-                const finalDocId = id.replace(/[^a-zA-Z0-9_-]/g, "_");
-                
-                if (hasRecentSent(finalDocId, mag)) continue;
+        const mag = Number(eq.properties.mag || 0);
+        if (isNaN(mag) || mag < GLOBAL_MIN_NOTIFY_MAG) continue;
 
-const sent = await checkAndMarkSent(finalDocId, mag);
-markRecentSent(finalDocId, mag);
+        const quakeTime = eq.properties.time || Date.now();
 
-if (!sent) {
-                    await sendNotification({
-                        ...eq,
-                        geometry: { coordinates: [lon, lat, depthRaw] },
-                        properties: { ...eq.properties, source: "usgs" }
-                    });
-                }
-            } catch (err) {
-                console.error("❌ Tekil USGS Satır Hatası:", err.message);
-            }
-        }
+        // ⏰ Son 15 dakikadaki depremler
+        const ageMinutes = (Date.now() - quakeTime) / 60000;
+
+        if (ageMinutes > 15 || ageMinutes < -15) {
+            continue;
+        }
+
+        const id = `usgs_${eq.id}_${quakeTime}`;
+        const finalDocId = id.replace(/[^a-zA-Z0-9_-]/g, "_");
+
+        if (hasRecentSent(finalDocId, mag)) continue;
+
+        const sent = await checkAndMarkSent(finalDocId, mag);
+
+        markRecentSent(finalDocId, mag);
+
+        if (!sent) {
+            await sendNotification({
+                ...eq,
+                geometry: {
+                    coordinates: [lon, lat, depthRaw]
+                },
+                properties: {
+                    ...eq.properties,
+                    source: "usgs"
+                }
+            });
+        }
+
+    } catch (err) {
+        console.error("❌ Tekil USGS Satır Hatası:", err.message);
+    }
+}
 
         // 🇹🇷 KANDİLLİ İŞLEME
-        for (const eq of kandilliList) {
-            try {
-               const mag = parseFloat(eq.mag);
-if (isNaN(mag) || mag < GLOBAL_MIN_NOTIFY_MAG) continue;
+      for (const eq of kandilliList) {
+    try {
+        const mag = parseFloat(eq.mag);
+        if (isNaN(mag) || mag < GLOBAL_MIN_NOTIFY_MAG) continue;
 
-                const lat = Number(eq.lat);
-                const lon = Number(eq.lon);
-                const depth = Number(eq.depth || 0);
+        const quakeTime = Number(eq.time);
 
-                if (!lat || !lon) continue;
+        // ⏰ Son 15 dakikadaki depremler
+        const ageMinutes = (Date.now() - quakeTime) / 60000;
 
-                const safeLatStr = String(lat).replace(/[^0-9]/g, "");
-                const safeLonStr = String(lon).replace(/[^0-9]/g, "");
-                const fallbackId = `kandilli_${safeLatStr}_${safeLonStr}`;
-                const id = eq.id ? String(eq.id) : fallbackId;
-                const finalDocId = id.replace(/[^a-zA-Z0-9_-]/g, "_");
-                
-                if (hasRecentSent(finalDocId, mag)) continue;
+        if (ageMinutes > 15 || ageMinutes < -15) {
+            continue;
+        }
 
-const sent = await checkAndMarkSent(finalDocId, mag);
-markRecentSent(finalDocId, mag);
+        const lat = Number(eq.lat);
+        const lon = Number(eq.lon);
+        const depth = Number(eq.depth || 0);
 
-if (!sent) {
-                    await sendNotification({
-                        properties: {
-                            mag: mag,
-                            place: eq.title,
-                            source: "kandilli",
-                            date: eq.date
-                        },
-                        geometry: {
-                            coordinates: [lon, lat, depth]
-                        }
-                    });
-                }
-            } catch (err) {
-                console.error("❌ Tekil Kandilli Satır Hatası:", err.message);
-            }
-        }
+        if (!lat || !lon) continue;
 
-    } catch (e) {
-        console.error("❌ GENEL LOOP HATASI:", e.message);
-    }
+        const safeLatStr = String(lat).replace(/[^0-9]/g, "");
+        const safeLonStr = String(lon).replace(/[^0-9]/g, "");
+        const fallbackId = `kandilli_${safeLatStr}_${safeLonStr}`;
+
+        const id = eq.id ? String(eq.id) : fallbackId;
+        const finalDocId = id.replace(/[^a-zA-Z0-9_-]/g, "_");
+
+        if (hasRecentSent(finalDocId, mag)) continue;
+
+        const sent = await checkAndMarkSent(finalDocId, mag);
+
+        markRecentSent(finalDocId, mag);
+
+        if (!sent) {
+            await sendNotification({
+                properties: {
+                    mag: mag,
+                    place: eq.title,
+                    source: "kandilli",
+                    date: eq.date,
+                    time: quakeTime
+                },
+                geometry: {
+                    coordinates: [lon, lat, depth]
+                }
+            });
+        }
+
+    } catch (err) {
+        console.error("❌ Tekil Kandilli Satır Hatası:", err.message);
+    }
+}
+
+} catch (e) {
+    console.error("❌ GENEL LOOP HATASI:", e.message);
 }
 
 // ======================
