@@ -522,6 +522,7 @@ for (const eq of usgsList) {
 } catch (e) {
     console.error("❌ GENEL LOOP HATASI:", e.message);
 }
+}
 
 // ======================
 cron.schedule("*/30 * * * * *", checkEarthquakes);
