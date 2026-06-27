@@ -396,7 +396,7 @@ async function checkEarthquakes() {
     const NOW = Date.now();
     
     // 🔒 1. KORUMA: Eğer son çalışmanın üzerinden 43 saniye geçmediyse çalıştırma
- if (NOW - lastRun < 18000) {
+ if (NOW - lastRun < 25000) {
     return;
 }
     // Zaman kilitini güncelle
@@ -525,7 +525,7 @@ for (const eq of usgsList) {
 }
 
 // ======================
-cron.schedule("*/20 * * * * *", checkEarthquakes);
+cron.schedule("*/30 * * * * *", checkEarthquakes);
 
 // ======================
 // API ENDPOINTS & HELPERS
