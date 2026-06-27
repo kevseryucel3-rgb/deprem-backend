@@ -5,7 +5,6 @@ const iconv = require("iconv-lite");
 
 const KANDILLI_URL = "http://www.koeri.boun.edu.tr/scripts/lst0.asp";
 
-// Büyüklükleri sırasıyla (hangisi doluysa) en doğru şekilde çeken fonksiyon
 function parseMagnitude(md, ml, mw) {
   const parseValue = (val) => {
     if (!val || val.includes("-")) return null;
@@ -17,7 +16,7 @@ function parseMagnitude(md, ml, mw) {
   const numMl = parseValue(ml);
   const numMd = parseValue(md);
 
-  return numMl || numMw || numMd || 0;
+  return numMw || numMl || numMd || 0;
 }
 
 function parseLine(line) {
@@ -27,8 +26,19 @@ function parseLine(line) {
 
   if (!match) return null;
 
-  const [, rawDate, rawTime, rawLat, rawLon, rawDepth, md, ml, mw, rawPlace] = match;
-  
+  const [
+    ,
+    rawDate,
+    rawTime,
+    rawLat,
+    rawLon,
+    rawDepth,
+    md,
+    ml,
+    mw,
+    rawPlace,
+  ] = match;
+
   const latitude = parseFloat(rawLat);
   const longitude = parseFloat(rawLon);
   const depth = parseFloat(rawDepth);
@@ -40,10 +50,13 @@ function parseLine(line) {
 
   const isoDate = rawDate.replace(/\./g, "-");
   const dateTime = `${isoDate}T${rawTime}+03:00`;
-const timestampMs = new Date(dateTime).getTime();
+  const timestampMs = new Date(dateTime).getTime();
   const place = rawPlace.trim().replace(/\s+/g, " ");
 
-  const rawIdString = `kandilli_${isoDate}_${rawTime.replace(/:/g, "")}_${latitude}_${longitude}`;
+  if (!Number.isFinite(timestampMs)) return null;
+
+  const rawIdString =
+    `kandilli_${isoDate}_${rawTime.replace(/:/g, "")}_${latitude}_${longitude}`;
   const safeId = crypto.createHash("md5").update(rawIdString).digest("hex");
 
   return {
@@ -76,10 +89,12 @@ async function getKandilliDepremler() {
   try {
     const response = await axios.get(KANDILLI_URL, {
       responseType: "arraybuffer",
-      timeout: 10000, // İstek süresini kısalttık (daha hızlı tepki için)
+      timeout: 10000,
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Cache-Control": "no-cache" // Her zaman güncel veri çekilmesini sağlar
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache",
       },
     });
 
@@ -89,23 +104,19 @@ async function getKandilliDepremler() {
 
     if (!rawText) throw new Error("Kandilli verisi boş geldi.");
 
-    // VERİ KORUMA: 
-    // 1. split ile satırları ayır
-    // 2. slice(0, 30) ile ilk 30 satırı al (sadece en güncel olanlar)
-    // 3. parseLine ile işle ve null olanları filtrele
-  const earthquakes = rawText
-  .split("\n")
-  .map((line) => parseLine(line))
-  .filter(Boolean)
-  .sort((a, b) => b.time - a.time)
-  .slice(0, 50);
+    const earthquakes = rawText
+      .split("\n")
+      .map((line) => parseLine(line))
+      .filter(Boolean)
+      .sort((a, b) => b.time - a.time)
+      .slice(0, 50);
 
-    console.log(`✅ Kandilli verisi korumalı işlendi: ${earthquakes.length} adet deprem bulundu.`);
+    console.log(
+      `✅ Kandilli verisi korumalı işlendi: ${earthquakes.length} adet deprem bulundu.`
+    );
     return earthquakes;
-
   } catch (error) {
     console.error("❌ Kandilli servis çekim hatası:", error.message);
-    // Hata durumunda boş dizi dönerek ana döngünün çökmesini engelliyoruz
     return [];
   }
 }
