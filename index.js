@@ -175,8 +175,14 @@ async function sendNotification(eq) {
 
     console.log(`📨 İşlem Başladı: ${source} | Şiddet: ${mag} | Yer: ${place}`);
 
-    const usersQuery = db.collection("users")
+    let usersQuery = db.collection("users")
         .where("pushActive", "==", true);
+
+    if (source === "kandilli") {
+        usersQuery = usersQuery
+            .where("lat", ">=", 34)
+            .where("lat", "<=", 44);
+    }
 
     let lastDoc = null;
     let totalReadUsers = 0;
@@ -190,8 +196,14 @@ async function sendNotification(eq) {
             )
             .limit(USER_PAGE_SIZE);
 
-        pageQuery = pageQuery
-            .orderBy(admin.firestore.FieldPath.documentId());
+        if (source === "kandilli") {
+            pageQuery = pageQuery
+                .orderBy("lat")
+                .orderBy(admin.firestore.FieldPath.documentId());
+        } else {
+            pageQuery = pageQuery
+                .orderBy(admin.firestore.FieldPath.documentId());
+        }
 
         if (lastDoc) {
             pageQuery = pageQuery.startAfter(lastDoc);
@@ -230,6 +242,17 @@ async function sendNotification(eq) {
             if (isNaN(userLat) || isNaN(userLon)) return;
 
             const distance = getDistance(userLat, userLon, lat, lon);
+
+            // Kandilli sadece Türkiye içindeki kullanıcılara gider.
+            if (source === "kandilli") {
+                const isTR =
+                    userLat >= 34 &&
+                    userLat <= 44 &&
+                    userLon >= 24 &&
+                    userLon <= 47;
+
+                if (!isTR) return;
+            }
 
             let sendNotificationFlag = false;
             let sendAlarmFlag = false;
@@ -370,63 +393,36 @@ async function sendNotification(eq) {
 // 🔍 ANA DÖNGÜ (LOOP) - SADELEŞTİRİLMİŞ
 // ======================
 async function checkEarthquakes() {
-    if (isProcessing) {
-        console.log("⏭️ Önceki deprem taraması hâlâ çalışıyor.");
-        return;
-    }
-
-    const NOW = Date.now();
+    const NOW = Date.now();
     
     // 🔒 1. KORUMA: Eğer son çalışmanın üzerinden 43 saniye geçmediyse çalıştırma
  if (NOW - lastRun < 25000) {
     return;
 }
-    // Zaman kilidini güncelle
-    lastRun = NOW;
-    isProcessing = true;
+    // Zaman kilitini güncelle
+    lastRun = NOW;
 
-    try {
-        console.log("🔄 [CRON] Deprem taraması başlatıldı...");
+    try {
+        console.log("🔄 [CRON] Deprem taraması başlatıldı...");
 
-        let activeSource = "usgs";
-        let usgsList = [];
-        let kandilliList = [];
+        const [usgsRes, kandilliRawList] = await Promise.all([
+            fetch("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson").catch(() => null),
+            getKandilliDepremler().catch(() => [])
+        ]);
 
-        try {
-            const usgsRes = await fetch(
-                "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson",
-                { timeout: 10000 }
-            );
+        if (!usgsRes) {
+            console.error("⚠️ USGS API'sine erişilemedi.");
+            return;
+        }
 
-            if (!usgsRes.ok) {
-                throw new Error(`USGS HTTP ${usgsRes.status}`);
-            }
+        const usgs = await usgsRes.json();
+        const usgsList = usgs.features || [];
+        const kandilliList = cleanKandilliData(kandilliRawList);
 
-            const usgs = await usgsRes.json();
+        console.log(`📡 Veri Çekildi -> USGS: ${usgsList.length} | Kandilli: ${kandilliList.length}`);
 
-            if (!Array.isArray(usgs.features) || usgs.features.length === 0) {
-                throw new Error("USGS geçerli deprem listesi döndürmedi.");
-            }
-
-            usgsList = usgs.features;
-            console.log(`✅ Ana kaynak USGS aktif: ${usgsList.length} kayıt.`);
-        } catch (usgsError) {
-            activeSource = "kandilli";
-            console.error(`⚠️ USGS başarısız: ${usgsError.message}`);
-            console.log("🔁 Yedek kaynak Kandilli deneniyor...");
-
-            const kandilliRawList = await getKandilliDepremler();
-            kandilliList = cleanKandilliData(kandilliRawList);
-
-            if (kandilliList.length === 0) {
-                throw new Error("USGS ve Kandilli kaynaklarının ikisi de veri döndürmedi.");
-            }
-
-            console.log(`✅ Yedek kaynak Kandilli aktif: ${kandilliList.length} kayıt.`);
-        }
-
-        // 🌍 USGS İŞLEME
-if (activeSource === "usgs") for (const eq of usgsList) {
+        // 🌍 USGS İŞLEME
+for (const eq of usgsList) {
     try {
         const [lon, lat, depthRaw] = eq.geometry.coordinates;
 
@@ -470,7 +466,7 @@ if (activeSource === "usgs") for (const eq of usgsList) {
 }
 
         // 🇹🇷 KANDİLLİ İŞLEME
-      if (activeSource === "kandilli") for (const eq of kandilliList) {
+      for (const eq of kandilliList) {
     try {
         const mag = parseFloat(eq.mag);
         if (isNaN(mag) || mag < GLOBAL_MIN_NOTIFY_MAG) continue;
@@ -523,15 +519,13 @@ if (activeSource === "usgs") for (const eq of usgsList) {
     }
 }
 
-    } catch (e) {
-        console.error("❌ GENEL LOOP HATASI:", e.message);
-    } finally {
-        isProcessing = false;
-    }
+} catch (e) {
+    console.error("❌ GENEL LOOP HATASI:", e.message);
+}
 }
 
 // ======================
-cron.schedule("*/30 * * * * *", checkEarthquakes);
+cron.schedule("*/20 * * * * *", checkEarthquakes);
 
 // ======================
 // API ENDPOINTS & HELPERS
