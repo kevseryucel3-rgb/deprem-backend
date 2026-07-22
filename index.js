@@ -654,17 +654,67 @@ app.post("/verify-google-purchase", async (req, res) => {
             token: purchaseToken,
         });
 
-        const sub = result.data;
-        const expiryTime = sub.lineItems?.[0]?.expiryTime;
+       const sub = result.data;
 
-        if (!expiryTime) {
-            return res.status(400).json({ error: "no_expiry_time" });
-        }
+console.log("🧾 GOOGLE PLAY SUB:", {
+    uid,
+    productId,
+    subscriptionState: sub.subscriptionState,
+    latestOrderId: sub.latestOrderId,
+    lineItems: sub.lineItems,
+});
 
-        const expiryDate = new Date(expiryTime);
-        const premium = expiryDate > new Date();
+const expiryTimes = (sub.lineItems || [])
+    .map(item => item.expiryTime)
+    .filter(Boolean);
 
-        await db.collection("users").doc(uid).set({
+if (!expiryTimes.length) {
+    return res.status(400).json({ error: "no_expiry_time" });
+}
+
+const expiryDate = expiryTimes
+    .map(time => new Date(time))
+    .sort((a, b) => b.getTime() - a.getTime())[0];
+
+const now = new Date();
+
+const activeStates = [
+    "SUBSCRIPTION_STATE_ACTIVE",
+    "SUBSCRIPTION_STATE_IN_GRACE_PERIOD",
+];
+
+const premium =
+    expiryDate > now &&
+    activeStates.includes(sub.subscriptionState);
+
+const userRef = db.collection("users").doc(uid);
+const currentDoc = await userRef.get();
+const currentData = currentDoc.exists ? currentDoc.data() : {};
+
+const currentPremiumUntil = currentData.premiumUntil?.toDate
+    ? currentData.premiumUntil.toDate()
+    : null;
+
+// Eski/bitmiş token gelirse mevcut daha ileri premium tarihini ezme.
+if (
+    currentPremiumUntil &&
+    currentPremiumUntil > expiryDate &&
+    currentPremiumUntil > now
+) {
+    console.log("⚠️ Eski purchase token geldi, mevcut premium korunuyor:", {
+        uid,
+        incomingExpiry: expiryDate.toISOString(),
+        currentPremiumUntil: currentPremiumUntil.toISOString(),
+    });
+
+    return res.json({
+        premium: true,
+        premiumUntil: currentPremiumUntil.toISOString(),
+        keptExisting: true,
+    });
+}
+
+await userRef.set({
             isPremium: premium,
             premiumUntil: admin.firestore.Timestamp.fromDate(expiryDate),
             googlePlay: {
