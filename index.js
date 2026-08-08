@@ -254,19 +254,19 @@ async function sendNotification(eq) {
                 if (!isTR) return;
             }
 
-            let sendNotificationFlag = false;
-            let sendAlarmFlag = false;
+           let sendNotificationFlag = false;
+let sendAlarmFlag = false;
 
-            let isPremium = false;
+let isPremium = user.isPremium === true;
 
-            if (user.premiumUntil) {
-                try {
-                    const until = user.premiumUntil.toDate();
-                    isPremium = until > new Date();
-                } catch (e) {
-                    console.log("⚠️ premiumUntil parse hatası:", e.message);
-                }
-            }
+if (user.premiumUntil) {
+    try {
+        const until = user.premiumUntil.toDate();
+        isPremium = isPremium || until > new Date();
+    } catch (e) {
+        console.log("⚠️ premiumUntil parse hatası:", e.message);
+    }
+}
 
             const notifMinMag = Number(user.minMag ?? 1);
             const notifMaxDist = Number(user.maxDist ?? 15000);
